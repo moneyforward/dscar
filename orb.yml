@@ -1,0 +1,179 @@
+version: 2.1
+
+description: Delta Static Code Analysis Reports
+orbs:
+  compare-url: iynere/compare-url@1.2.0
+  node: circleci/node@1.1.6
+executors:
+  default:
+    description: Use a CircleCI convenience image to analyze code statically
+    docker:
+    - image: circleci/node:lts
+commands:
+  analyze:
+    description: Analyze code statically
+    parameters:
+      command:
+        description: The command used for analysis
+        type: string
+        default: "true"
+      arguments:
+        description: Arguments of analysis command
+        type: string
+        default: ""
+      results-path:
+        description: Path to save analysis results
+        type: string
+        default: "/dev/null"
+      ignore-exit-code:
+        description: Specify true if you want the exit code of the analysis step to always return 0.
+        type: boolean
+        default: true
+      prepare:
+        description: Specify the required steps before analysis if necessary
+        type: steps
+        default: []
+      step-name:
+        description: Specify a analysis step name for this command, if desired
+        type: string
+        default: Analyze code statically
+    steps:
+      - steps: << parameters.prepare >>
+      - run:
+          name: << parameters.step-name >>
+          command: |
+              << parameters.command >> << parameters.arguments >> > << parameters.results-path >>; test $? -eq 0 || << parameters.ignore-exit-code >>
+  calculate:
+    description: Calculate the difference between the analysis results
+    parameters:
+      options:
+        description: Specify options for the junit-reports-combiner command
+        type: string
+        default: ""
+      first-results-path:
+        description: Path of the file to use as the minuend
+        type: string
+        default: "HEAD-analysis-results.xml"
+      second-results-path:
+        description: Path of the file to use as the subtrahend
+        type: string
+        default: "BASE-analysis-results.xml"
+      delta-results-path:
+        description: Path to save difference of analysis results
+        type: string
+        default: "/dev/null"
+    steps:
+      - node/install
+      - run:
+          name: Calculate the difference
+          command: |
+              sudo apt-get install xmlstarlet
+              sudo npm install --global junit-reports-combiner
+              OPTIONS=<< parameters.options >>
+              test `junit-reports-combiner --operator=except ${OPTIONS} << parameters.first-results-path >> << parameters.second-results-path >> | tee << parameters.delta-results-path >> | xmlstarlet sel -t -m '//failure|//error'  -v '.' -n | wc -l` -eq 0
+  execute:
+    description: alculate the difference of static code analysis results between HEAD branch and BASE branch
+    parameters:
+      analysis-prepare:
+        description: Specify the required steps before analysis if necessary
+        type: steps
+        default: []
+      analysis-name:
+        description: Analysis name
+        type: string
+        default: "true"
+      analysis-command:
+        description: The command used for analysis
+        type: string
+        default: "true"
+      analysis-arguments:
+        description: Arguments of analysis command
+        type: string
+        default: ""
+      calculate-options:
+        description: Specify options for the junit-reports-combiner command
+        type: string
+        default: ""
+      test-results-path:
+        description: Specify the value of the path parameter in the store_test_results step if you need to change it
+        type: string
+        default: "/tmp/test-results"
+      analysis-results-path:
+        description: Specify the path to save the analysis results if you need to change it
+        type: string
+        default: "/tmp/analysis-results"
+    steps:
+      - checkout
+      - compare-url/reconstruct
+      - run:
+          name: Setup
+          command: |
+              mkdir -p << parameters.analysis-results-path >>/<< parameters.analysis-name >>
+              mkdir -p << parameters.test-results-path >>/<< parameters.analysis-name >>
+      - steps: << parameters.analysis-prepare >>
+      - analyze:
+          step-name: Analyze the HEAD branch using << parameters.analysis-name >>
+          command: << parameters.analysis-command >>
+          arguments: << parameters.analysis-arguments >>
+          prepare: []
+          results-path: << parameters.analysis-results-path >>/<< parameters.analysis-name >>/HEAD-analysis-results.xml
+      - compare-url/use:
+          custom-logic: git checkout $(cat BASE_COMPARE_COMMIT.txt)
+      - analyze:
+          step-name: Analyze the BASE branch using << parameters.analysis-name >>
+          command: << parameters.analysis-command >>
+          arguments: << parameters.analysis-arguments >>
+          prepare: []
+          results-path: << parameters.analysis-results-path >>/<< parameters.analysis-name >>/BASE-analysis-results.xml
+      - calculate:
+          options: << parameters.calculate-options >>
+          first-results-path: << parameters.analysis-results-path >>/<< parameters.analysis-name >>/HEAD-analysis-results.xml
+          second-results-path: << parameters.analysis-results-path >>/<< parameters.analysis-name >>/BASE-analysis-results.xml
+          delta-results-path: << parameters.test-results-path >>/<< parameters.analysis-name >>/DELTA-analysis-results.xml
+      - store_test_results:
+          path: << parameters.test-results-path >>
+jobs:
+  execute:
+    description: Calculate the difference of static code analysis results between HEAD branch and BASE branch
+    parameters:
+      executor:
+        type: executor
+        default: default
+      analysis-prepare:
+        description: Specify the required steps before analysis if necessary
+        type: steps
+        default: []
+      analysis-name:
+        description: Analysis name
+        type: string
+        default: "true"
+      analysis-command:
+        description: The command used for analysis
+        type: string
+        default: "true"
+      analysis-arguments:
+        description: Arguments of analysis command
+        type: string
+        default: ""
+      calculate-options:
+        description: Specify options for the junit-reports-combiner command
+        type: string
+        default: ""
+      test-results-path:
+        description: Specify the value of the path parameter in the store_test_results step if you need to change it
+        type: string
+        default: "/tmp/test-results"
+      analysis-results-path:
+        description: Specify the path to save the analysis results if you need to change it
+        type: string
+        default: "/tmp/analysis-results"
+    executor: << parameters.executor >>
+    steps:
+      - execute:
+          analysis-prepare: << parameters.analysis-prepare >>
+          analysis-name: << parameters.analysis-name >>
+          analysis-command: << parameters.analysis-command >>
+          analysis-arguments: << parameters.analysis-arguments >>
+          calculate-options: << parameters.calculate-options >>
+          test-results-path: << parameters.test-results-path >>
+          analysis-results-path: << parameters.analysis-results-path >>

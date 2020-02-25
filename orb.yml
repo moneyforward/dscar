@@ -193,12 +193,19 @@ examples:
     usage:
       version: 2.1
       orbs:
-        dscar: naokikimura/dscar@0.0.4
+        dscar: naokikimura/dscar@0.0.6
+      executors:
+        ruby:
+          docker:
+            - image: circleci/ruby:latest
       workflows:
         analyze-code-statically:
           jobs:
             - dscar/execute:
+                executor: ruby
                 analysis-name: Brakeman
                 analysis-command: brakeman
                 analysis-arguments: -f junit
+                analysis-prepare:
+                  - run: sudo gem install brakeman
                 calculate-options: --test-case-key='concat(@classname,"#",@name,"=>",normalize-space())' --namespace='brakeman=https://brakemanscanner.org/'

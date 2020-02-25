@@ -42,7 +42,7 @@ commands:
       - run:
           name: << parameters.step-name >>
           command: |
-              << parameters.command >> << parameters.arguments >> > << parameters.results-path >>; test $? -eq 0 || << parameters.ignore-exit-code >>
+              << parameters.command >> << parameters.arguments >> > << parameters.results-path >> || << parameters.ignore-exit-code >>
   calculate:
     description: Calculate the difference between the analysis results
     parameters:
@@ -69,8 +69,7 @@ commands:
           command: |
               sudo apt-get install xmlstarlet
               sudo npm install --global junit-reports-combiner
-              OPTIONS=<< parameters.options >>
-              test `junit-reports-combiner --operator=except ${OPTIONS} << parameters.first-results-path >> << parameters.second-results-path >> | tee << parameters.delta-results-path >> | xmlstarlet sel -t -m '//failure|//error'  -v '.' -n | wc -l` -eq 0
+              test `junit-reports-combiner --operator=except << parameters.options >> << parameters.first-results-path >> << parameters.second-results-path >> | tee << parameters.delta-results-path >> | xmlstarlet sel -t -m '//failure|//error'  -v '.' -n | wc -l` -eq 0
   execute:
     description: alculate the difference of static code analysis results between HEAD branch and BASE branch
     parameters:
@@ -104,7 +103,9 @@ commands:
         default: "/tmp/analysis-results"
     steps:
       - checkout
-      - compare-url/reconstruct
+      - compare-url/reconstruct:
+          project-path: $CIRCLE_WORKING_DIRECTORY
+          debug: true
       - run:
           name: Setup
           command: |

@@ -40,12 +40,17 @@ commands:
         description: Specify a analysis step name for this command, if desired
         type: string
         default: Analyze code statically
+      redirecting-output:
+        description: Specify ">/dev/null" if you do not want to display the analysis results on the standard output
+        type: enum
+        enum: ["", ">/dev/null"]
+        default: ""
     steps:
       - steps: << parameters.prepare >>
       - run:
           name: << parameters.step-name >>
           command: |
-              << parameters.command >> << parameters.arguments >> > << parameters.results-path >> || << parameters.ignore-exit-code >>
+              << parameters.command >> << parameters.arguments >> | tee << parameters.results-path >> << parameters.redirecting-output >> || << parameters.ignore-exit-code >>
   calculate:
     description: |
       Calculate the difference between the analysis results
@@ -109,8 +114,13 @@ commands:
         description: Specify the path to save the analysis results if you need to change it
         type: string
         default: "/tmp/analysis-results"
+      redirecting-output:
+        description: Specify ">/dev/null" if you do not want to display the analysis results on the standard output
+        type: enum
+        enum: ["", ">/dev/null"]
+        default: ""
       project-path:
-        description:
+        description: Absolute path to your project's base directory, necessary for running git commands
         type: string
         default: $CIRCLE_WORKING_DIRECTORY
     steps:
@@ -130,6 +140,7 @@ commands:
           arguments: << parameters.analysis-arguments >>
           prepare: []
           results-path: << parameters.analysis-results-path >>/<< parameters.analysis-name >>/HEAD-analysis-results.xml
+          redirecting-output: << parameters.redirecting-output >>
       - compare-url/use:
           custom-logic: git checkout $(cat BASE_COMPARE_COMMIT.txt)
       - analyze:
@@ -138,6 +149,7 @@ commands:
           arguments: << parameters.analysis-arguments >>
           prepare: []
           results-path: << parameters.analysis-results-path >>/<< parameters.analysis-name >>/BASE-analysis-results.xml
+          redirecting-output: << parameters.redirecting-output >>
       - calculate:
           options: << parameters.calculate-options >>
           first-results-path: << parameters.analysis-results-path >>/<< parameters.analysis-name >>/HEAD-analysis-results.xml
@@ -180,6 +192,11 @@ jobs:
         description: Specify the path to save the analysis results if you need to change it
         type: string
         default: "/tmp/analysis-results"
+      redirecting-output:
+        description: Specify ">/dev/null" if you do not want to display the analysis results on the standard output
+        type: enum
+        enum: ["", ">/dev/null"]
+        default: ""
     executor: << parameters.executor >>
     steps:
       - execute:
@@ -190,6 +207,7 @@ jobs:
           calculate-options: << parameters.calculate-options >>
           test-results-path: << parameters.test-results-path >>
           analysis-results-path: << parameters.analysis-results-path >>
+          redirecting-output: << parameters.redirecting-output >>
 
 examples:
   dscar-brakeman:

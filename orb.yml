@@ -31,7 +31,7 @@ commands:
       ignore-exit-code:
         description: Specify true if you want the exit code of the analysis step to always return 0.
         type: boolean
-        default: true
+        default: false
       prepare:
         description: Specify the required steps before analysis if necessary
         type: steps
@@ -45,12 +45,17 @@ commands:
         type: enum
         enum: ["", ">/dev/null"]
         default: ""
+      exit-code-threshold:
+        description: Specify the upper limit of the exit code that is regarded as normal termination
+        type: integer
+        default: 255
     steps:
       - steps: << parameters.prepare >>
       - run:
           name: << parameters.step-name >>
           command: |
-              << parameters.command >> << parameters.arguments >> | tee << parameters.results-path >> << parameters.redirecting-output >> || << parameters.ignore-exit-code >>
+              set +e
+              << parameters.command >> << parameters.arguments >> | tee << parameters.results-path >> << parameters.redirecting-output >> || test $? -lt << parameters.exit-code-threshold >> || << parameters.ignore-exit-code >>
   calculate:
     description: |
       Calculate the difference between the analysis results
@@ -123,6 +128,14 @@ commands:
         description: Absolute path to your project's base directory, necessary for running git commands
         type: string
         default: $CIRCLE_WORKING_DIRECTORY
+      ignore-analysis-exit-code:
+        description: Specify true if you want the exit code of the analysis step to always return 0.
+        type: boolean
+        default: false
+      analysis-exit-code-threshold:
+        description: Specify the upper limit of the exit code that is regarded as normal termination
+        type: integer
+        default: 255
     steps:
       - checkout
       - compare-url/reconstruct:
@@ -141,6 +154,8 @@ commands:
           prepare: []
           results-path: << parameters.analysis-results-path >>/<< parameters.analysis-name >>/HEAD-analysis-results.xml
           redirecting-output: << parameters.redirecting-output >>
+          ignore-exit-code: << parameters.ignore-analysis-exit-code >>
+          exit-code-threshold: << parameters.analysis-exit-code-threshold >>
       - compare-url/use:
           custom-logic: git checkout $(cat BASE_COMPARE_COMMIT.txt)
       - analyze:
@@ -150,6 +165,8 @@ commands:
           prepare: []
           results-path: << parameters.analysis-results-path >>/<< parameters.analysis-name >>/BASE-analysis-results.xml
           redirecting-output: << parameters.redirecting-output >>
+          ignore-exit-code: << parameters.ignore-analysis-exit-code >>
+          exit-code-threshold: << parameters.analysis-exit-code-threshold >>
       - calculate:
           options: << parameters.calculate-options >>
           first-results-path: << parameters.analysis-results-path >>/<< parameters.analysis-name >>/HEAD-analysis-results.xml
@@ -197,6 +214,14 @@ jobs:
         type: enum
         enum: ["", ">/dev/null"]
         default: ""
+      ignore-analysis-exit-code:
+        description: Specify true if you want the exit code of the analysis step to always return 0.
+        type: boolean
+        default: false
+      analysis-exit-code-threshold:
+        description: Specify the upper limit of the exit code that is regarded as normal termination
+        type: integer
+        default: 255
     executor: << parameters.executor >>
     steps:
       - execute:
@@ -208,6 +233,8 @@ jobs:
           test-results-path: << parameters.test-results-path >>
           analysis-results-path: << parameters.analysis-results-path >>
           redirecting-output: << parameters.redirecting-output >>
+          ignore-analysis-exit-code: << parameters.ignore-analysis-exit-code >>
+          analysis-exit-code-threshold: << parameters.analysis-exit-code-threshold >>
 
 examples:
   dscar-brakeman:
@@ -215,7 +242,7 @@ examples:
     usage:
       version: 2.1
       orbs:
-        dscar: naokikimura/dscar@0.0.6
+        dscar: naokikimura/dscar@0.0.10
       executors:
         ruby:
           docker:

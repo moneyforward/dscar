@@ -109,10 +109,14 @@ commands:
         description: Specify the path to save the analysis results if you need to change it
         type: string
         default: "/tmp/analysis-results"
+      project-path:
+        description:
+        type: string
+        default: $CIRCLE_WORKING_DIRECTORY
     steps:
       - checkout
       - compare-url/reconstruct:
-          project-path: $CIRCLE_WORKING_DIRECTORY
+          project-path: '`eval echo << parameters.project-path >>`'
           debug: true
       - run:
           name: Setup

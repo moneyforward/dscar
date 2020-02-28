@@ -87,7 +87,11 @@ commands:
           command: |
               sudo apt-get install xmlstarlet
               sudo npm install --global junit-reports-combiner
-              test `junit-reports-combiner --operator=except << parameters.options >> << parameters.first-results-path >> << parameters.second-results-path >> | tee << parameters.delta-results-path >> | xmlstarlet sel -t -m '//failure|//error'  -v '.' -n | wc -l` -eq 0
+              TEMP_FILE=$(mktemp)
+              NODE_DEBUG=junit-reports-combiner \
+              junit-reports-combiner --operator=except << parameters.options >> << parameters.first-results-path >> << parameters.second-results-path >> |
+              tee "$TEMP_FILE" << parameters.delta-results-path >>
+              ! xmlstarlet sel -t -m '//failure|//error' -v '.' -n < "$TEMP_FILE" >/dev/null
   execute:
     description: alculate the difference of static code analysis results between HEAD branch and BASE branch
     parameters:
@@ -136,6 +140,10 @@ commands:
         description: Specify the upper limit of the exit code that is regarded as normal termination
         type: integer
         default: 255
+      should-save-analysis-results-as-artifacts:
+        description: Specify true if analysis results should be saved as artifacts
+        type: boolean
+        default: false
     steps:
       - checkout
       - compare-url/reconstruct:
@@ -157,7 +165,9 @@ commands:
           ignore-exit-code: << parameters.ignore-analysis-exit-code >>
           exit-code-threshold: << parameters.analysis-exit-code-threshold >>
       - compare-url/use:
-          custom-logic: git checkout $(cat BASE_COMPARE_COMMIT.txt)
+          custom-logic: |
+              set +e
+              git checkout $(cat BASE_COMPARE_COMMIT.txt) || git checkout HEAD^
       - analyze:
           step-name: Analyze the BASE branch using << parameters.analysis-name >>
           command: << parameters.analysis-command >>
@@ -174,6 +184,11 @@ commands:
           delta-results-path: << parameters.test-results-path >>/<< parameters.analysis-name >>/DELTA-analysis-results.xml
       - store_test_results:
           path: << parameters.test-results-path >>
+      - when:
+          condition: << parameters.should-save-analysis-results-as-artifacts >>
+          steps:
+            - store_artifacts:
+                path: << parameters.analysis-results-path >>
 jobs:
   execute:
     description: Calculate the difference of static code analysis results between HEAD branch and BASE branch
@@ -222,6 +237,10 @@ jobs:
         description: Specify the upper limit of the exit code that is regarded as normal termination
         type: integer
         default: 255
+      should-save-analysis-results-as-artifacts:
+        description: Specify true if analysis results should be saved as artifacts
+        type: boolean
+        default: false
     executor: << parameters.executor >>
     steps:
       - execute:
@@ -235,6 +254,7 @@ jobs:
           redirecting-output: << parameters.redirecting-output >>
           ignore-analysis-exit-code: << parameters.ignore-analysis-exit-code >>
           analysis-exit-code-threshold: << parameters.analysis-exit-code-threshold >>
+          should-save-analysis-results-as-artifacts: << parameters.should-save-analysis-results-as-artifacts >>
 
 examples:
   dscar-brakeman:

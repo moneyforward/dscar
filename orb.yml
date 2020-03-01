@@ -4,24 +4,73 @@ description: |
   Delta Static Code Analysis Reports running on CircleCI
 
   This Orb calculates the difference between two static code analysis results. However, the format of the static code analysis result must be JUnit XML. Using this Orb, you can get the static code analysis result for the update difference between HEAD branch and its BASE branch.
+
 orbs:
   compare-url: iynere/compare-url@1.2.0
   node: circleci/node@1.1.6
+
 executors:
   default:
-    description: Use a CircleCI convenience image to analyze code statically
+    description: Default analysis execution environment
+    parameters:
+      docker-image:
+        description: Specify the image used to execute the analysis
+        type: string
+        default: circleci/node
     docker:
-    - image: circleci/node:lts
+      - image: << parameters.docker-image >>
+
 commands:
   analyze:
     description: Analyze code statically
     parameters:
-      command:
+      should-find:
+        description: Specify true if you want to find for analysis targets
+        type: enum
+        enum: ["true", "false"]
+        default: "false"
+      patterns-to-include:
+        description: Specify patterns to include by regular expression (Multiple patterns can be specified by separating them with line feed)
+        type: string
+        default: ".*"
+      patterns-to-exclude:
+        description: Specify patterns to exclude by regular expression (Multiple patterns can be specified by separating them with line feed)
+        type: string
+        default: ""
+      starting-points:
+        description: Specify the path of starting to search for files to analyze (Multiple paths can be specified by separating them with line feed)
+        type: string
+        default: "."
+      analysis-command:
         description: The command used for analysis
         type: string
         default: "true"
-      arguments:
+      analysis-arguments:
         description: Arguments of analysis command
+        type: string
+        default: ""
+      header-command:
+        description: The command used for header of analysis result
+        type: string
+        default: "true"
+      header-arguments:
+        description: Arguments of header command
+        type: string
+        default: ""
+      footer-command:
+        description: The command used for footer of analysis result
+        type: string
+        default: "true"
+      footer-arguments:
+        description: Arguments of footer command
+        type: string
+        default: ""
+      transformation-command:
+        description: The command used for transformation
+        type: string
+        default: "cat"
+      transformation-arguments:
+        description: Arguments of transformation command
         type: string
         default: ""
       results-path:
@@ -41,21 +90,57 @@ commands:
         type: string
         default: Analyze code statically
       redirecting-output:
-        description: Specify ">/dev/null" if you do not want to display the analysis results on the standard output
+        description: Specify "/dev/null" if you do not want to display the analysis results on the standard output
         type: enum
-        enum: ["", ">/dev/null"]
-        default: ""
+        enum: ["/dev/stdout", "/dev/stderr", "/dev/null"]
+        default: "/dev/stdout"
       exit-code-threshold:
         description: Specify the upper limit of the exit code that is regarded as normal termination
         type: integer
-        default: 255
+        default: 124
     steps:
       - steps: << parameters.prepare >>
       - run:
           name: << parameters.step-name >>
+          environment:
+            SHOULD_FIND: << parameters.should-find >>
+            STARTING_POINTS: << parameters.starting-points >>
+            PATTERNS_TO_INCLUDE: << parameters.patterns-to-include >>
+            PATTERNS_TO_EXCLUDE: << parameters.patterns-to-exclude >>
+            ANALYSIS_COMMAND: << parameters.analysis-command >>
+            HEADER_COMMAND: << parameters.header-command >>
+            FOOTER_COMMAND: << parameters.footer-command >>
+            PARAM_ANALYSIS_ARGUMENTS: << parameters.analysis-arguments >>
+            PARAM_HEADER_ARGUMENTS: << parameters.header-arguments >>
+            PARAM_FOOTER_ARGUMENTS: << parameters.footer-arguments >>
+            PARAM_TRANSFORMATION_ARGUMENTS: << parameters.transformation-arguments >>
+            TRANSFORMATION_COMMAND: << parameters.transformation-command >>
+            RESULTS_PATH: << parameters.results-path >>
           command: |
-              set +e
-              << parameters.command >> << parameters.arguments >> | tee << parameters.results-path >> << parameters.redirecting-output >> || test $? -lt << parameters.exit-code-threshold >> || << parameters.ignore-exit-code >>
+              set +e -x
+              {
+                if $SHOULD_FIND
+                then {
+                  echo "$STARTING_POINTS" | awk NF | while read -r path; do printf '%q\n' "$path" || exit $?; done
+                  echo '-type f ( -path ""'
+                  echo "$PATTERNS_TO_INCLUDE" | awk NF | while read -r pattern; do printf -- '-o -regex %q\n' "$pattern" || exit $? ; done
+                  echo ') '
+                  echo "$PATTERNS_TO_EXCLUDE" | awk NF | while read -r pattern; do printf '! -regex %q\n' "$pattern" || exit $? ; done
+                  echo '-print0'
+                } | xargs -t find
+                else {
+                  echo "$STARTING_POINTS"
+                } | tr '\n' '\0'
+                fi
+              } |
+                xargs -0t "${ANALYSIS_COMMAND:-true}" "${ANALYSIS_ARGUMENTS[@]}" ${PARAM_ANALYSIS_ARGUMENTS} |
+                cat \
+                  <("${HEADER_COMMAND:-true}" "${HEADER_ARGUMENTS[@]}" ${PARAM_HEADER_ARGUMENTS}) \
+                  - \
+                  <("${FOOTER_COMMAND:-true}" "${FOOTER_ARGUMENTS[@]}" ${PARAM_FOOTER_ARGUMENTS}) |
+                "${TRANSFORMATION_COMMAND:-cat}" "${TRANSFORMATION_ARGUMENTS[@]}" ${PARAM_TRANSFORMATION_ARGUMENTS}  |
+                tee "${RESULTS_PATH:-/dev/null}" ><< parameters.redirecting-output >> ||
+                test $? -lt << parameters.exit-code-threshold >> || << parameters.ignore-exit-code >>
   calculate:
     description: |
       Calculate the difference between the analysis results
@@ -84,21 +169,51 @@ commands:
       - node/install
       - run:
           name: Calculate the difference
+          environment:
+              COMMAND: junit-reports-combiner
+              OPTIONS: << parameters.options >>
+              FIRST_RESULTS_PATH: << parameters.first-results-path >>
+              SECOND_RESULTS_PATH: << parameters.second-results-path >>
+              DELTA_RESULTS_PATH: << parameters.delta-results-path >>
           command: |
+              set -x
               sudo apt-get install xmlstarlet
-              sudo npm install --global junit-reports-combiner
+              sudo npm install --global "$COMMAND"
+
               TEMP_FILE=$(mktemp)
-              NODE_DEBUG=junit-reports-combiner \
-              junit-reports-combiner --operator=except << parameters.options >> << parameters.first-results-path >> << parameters.second-results-path >> |
-              tee "$TEMP_FILE" << parameters.delta-results-path >>
+              NODE_DEBUG="$COMMAND" "$COMMAND" $OPTIONS --operator=except \
+                "${FIRST_RESULTS_PATH:-HEAD-analysis-results.xml}" \
+                "${SECOND_RESULTS_PATH:-BASE-analysis-results.xml}" |
+                tee "$TEMP_FILE" "${DELTA_RESULTS_PATH:-/dev/null}" | xmlstarlet fo
               ! xmlstarlet sel -t -m '//failure|//error' -v '.' -n < "$TEMP_FILE" >/dev/null
   execute:
     description: alculate the difference of static code analysis results between HEAD branch and BASE branch
     parameters:
-      analysis-prepare:
+      prepare-to-execute:
+        description: Specify the required steps before execute if necessary
+        type: steps
+        default: []
+      prepare-to-analyze:
         description: Specify the required steps before analysis if necessary
         type: steps
         default: []
+      should-find:
+        description: Specify true if you want to find for analysis targets
+        type: enum
+        enum: ["true", "false"]
+        default: "false"
+      patterns-to-include:
+        description: Specify patterns to include by regular expression (Multiple patterns can be specified by separating them with line feed)
+        type: string
+        default: ".*"
+      patterns-to-exclude:
+        description: Specify patterns to exclude by regular expression (Multiple patterns can be specified by separating them with line feed)
+        type: string
+        default: ""
+      starting-points:
+        description: Specify the path of starting to search for files to analyze (Multiple paths can be specified by separating them with line feed)
+        type: string
+        default: "."
       analysis-name:
         description: Analysis name
         type: string
@@ -109,6 +224,30 @@ commands:
         default: "true"
       analysis-arguments:
         description: Arguments of analysis command
+        type: string
+        default: ""
+      analysis-result-header-command:
+        description: The command used for header of analysis result
+        type: string
+        default: "true"
+      analysis-result-header-arguments:
+        description: Arguments of header command
+        type: string
+        default: ""
+      analysis-result-footer-command:
+        description: The command used for footer of analysis result
+        type: string
+        default: "true"
+      analysis-result-footer-arguments:
+        description: Arguments of footer command
+        type: string
+        default: ""
+      analysis-result-transformation-command:
+        description: The command used for transformation
+        type: string
+        default: "cat"
+      analysis-result-transformation-arguments:
+        description: Arguments of transformation command
         type: string
         default: ""
       calculate-options:
@@ -124,10 +263,10 @@ commands:
         type: string
         default: "/tmp/analysis-results"
       redirecting-output:
-        description: Specify ">/dev/null" if you do not want to display the analysis results on the standard output
+        description: Specify "/dev/null" if you do not want to display the analysis results on the standard output
         type: enum
-        enum: ["", ">/dev/null"]
-        default: ""
+        enum: ["/dev/stdout", "/dev/stderr", "/dev/null"]
+        default: "/dev/stdout"
       project-path:
         description: Absolute path to your project's base directory, necessary for running git commands
         type: string
@@ -139,27 +278,41 @@ commands:
       analysis-exit-code-threshold:
         description: Specify the upper limit of the exit code that is regarded as normal termination
         type: integer
-        default: 255
+        default: 124
       should-save-analysis-results-as-artifacts:
         description: Specify true if analysis results should be saved as artifacts
         type: boolean
         default: false
     steps:
+      - steps: << parameters.prepare-to-execute >>
       - checkout
       - compare-url/reconstruct:
           project-path: '`eval echo << parameters.project-path >>`'
           debug: true
       - run:
           name: Setup
+          environment:
+            ANALYSIS_NAME: << parameters.analysis-name >>
+            ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
+            TEST_RESULTS_PATH: << parameters.test-results-path >>
           command: |
-              mkdir -p << parameters.analysis-results-path >>/<< parameters.analysis-name >>
-              mkdir -p << parameters.test-results-path >>/<< parameters.analysis-name >>
-      - steps: << parameters.analysis-prepare >>
+              mkdir -p "${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}/${ANALYSIS_NAME:-true}"
+              mkdir -p "${TEST_RESULTS_PATH:-/tmp/test-results}/${ANALYSIS_NAME:-true}"
       - analyze:
           step-name: Analyze the HEAD branch using << parameters.analysis-name >>
-          command: << parameters.analysis-command >>
-          arguments: << parameters.analysis-arguments >>
-          prepare: []
+          prepare: << parameters.prepare-to-analyze >>
+          should-find: << parameters.should-find >>
+          patterns-to-include: << parameters.patterns-to-include >>
+          patterns-to-exclude: << parameters.patterns-to-exclude >>
+          starting-points: << parameters.starting-points >>
+          analysis-command: << parameters.analysis-command >>
+          analysis-arguments: << parameters.analysis-arguments >>
+          header-command: << parameters.analysis-result-header-command >>
+          header-arguments: << parameters.analysis-result-header-arguments >>
+          footer-command: << parameters.analysis-result-footer-command >>
+          footer-arguments: << parameters.analysis-result-footer-arguments >>
+          transformation-command: << parameters.analysis-result-transformation-command >>
+          transformation-arguments: << parameters.analysis-result-transformation-arguments >>
           results-path: << parameters.analysis-results-path >>/<< parameters.analysis-name >>/HEAD-analysis-results.xml
           redirecting-output: << parameters.redirecting-output >>
           ignore-exit-code: << parameters.ignore-analysis-exit-code >>
@@ -170,9 +323,19 @@ commands:
               git checkout $(cat BASE_COMPARE_COMMIT.txt) || git checkout HEAD^
       - analyze:
           step-name: Analyze the BASE branch using << parameters.analysis-name >>
-          command: << parameters.analysis-command >>
-          arguments: << parameters.analysis-arguments >>
-          prepare: []
+          prepare: << parameters.prepare-to-analyze >>
+          should-find: << parameters.should-find >>
+          patterns-to-include: << parameters.patterns-to-include >>
+          patterns-to-exclude: << parameters.patterns-to-exclude >>
+          starting-points: << parameters.starting-points >>
+          analysis-command: << parameters.analysis-command >>
+          analysis-arguments: << parameters.analysis-arguments >>
+          header-command: << parameters.analysis-result-header-command >>
+          header-arguments: << parameters.analysis-result-header-arguments >>
+          footer-command: << parameters.analysis-result-footer-command >>
+          footer-arguments: << parameters.analysis-result-footer-arguments >>
+          transformation-command: << parameters.analysis-result-transformation-command >>
+          transformation-arguments: << parameters.analysis-result-transformation-arguments >>
           results-path: << parameters.analysis-results-path >>/<< parameters.analysis-name >>/BASE-analysis-results.xml
           redirecting-output: << parameters.redirecting-output >>
           ignore-exit-code: << parameters.ignore-analysis-exit-code >>
@@ -189,17 +352,40 @@ commands:
           steps:
             - store_artifacts:
                 path: << parameters.analysis-results-path >>
+
 jobs:
   execute:
     description: Calculate the difference of static code analysis results between HEAD branch and BASE branch
     parameters:
       executor:
+        description: 
         type: executor
         default: default
-      analysis-prepare:
+      prepare-to-execute:
+        description: Specify the required steps before execute if necessary
+        type: steps
+        default: []
+      prepare-to-analyze:
         description: Specify the required steps before analysis if necessary
         type: steps
         default: []
+      should-find:
+        description: Specify true if you want to find for analysis targets
+        type: enum
+        enum: ["true", "false"]
+        default: "false"
+      patterns-to-include:
+        description: Specify patterns to include by regular expression (Multiple patterns can be specified by separating them with line feed)
+        type: string
+        default: ".*"
+      patterns-to-exclude:
+        description: Specify patterns to exclude by regular expression (Multiple patterns can be specified by separating them with line feed)
+        type: string
+        default: ""
+      starting-points:
+        description: Specify the path of starting to search for files to analyze (Multiple paths can be specified by separating them with line feed)
+        type: string
+        default: "."
       analysis-name:
         description: Analysis name
         type: string
@@ -210,6 +396,30 @@ jobs:
         default: "true"
       analysis-arguments:
         description: Arguments of analysis command
+        type: string
+        default: ""
+      analysis-result-header-command:
+        description: The command used for header of analysis result
+        type: string
+        default: "true"
+      analysis-result-header-arguments:
+        description: Arguments of header command
+        type: string
+        default: ""
+      analysis-result-footer-command:
+        description: The command used for footer of analysis result
+        type: string
+        default: "true"
+      analysis-result-footer-arguments:
+        description: Arguments of footer command
+        type: string
+        default: ""
+      analysis-result-transformation-command:
+        description: The command used for transformation
+        type: string
+        default: "cat"
+      analysis-result-transformation-arguments:
+        description: Arguments of transformation command
         type: string
         default: ""
       calculate-options:
@@ -225,10 +435,10 @@ jobs:
         type: string
         default: "/tmp/analysis-results"
       redirecting-output:
-        description: Specify ">/dev/null" if you do not want to display the analysis results on the standard output
+        description: Specify "/dev/null" if you do not want to display the analysis results on the standard output
         type: enum
-        enum: ["", ">/dev/null"]
-        default: ""
+        enum: ["/dev/stdout", "/dev/stderr", "/dev/null"]
+        default: "/dev/stdout"
       ignore-analysis-exit-code:
         description: Specify true if you want the exit code of the analysis step to always return 0.
         type: boolean
@@ -236,7 +446,7 @@ jobs:
       analysis-exit-code-threshold:
         description: Specify the upper limit of the exit code that is regarded as normal termination
         type: integer
-        default: 255
+        default: 124
       should-save-analysis-results-as-artifacts:
         description: Specify true if analysis results should be saved as artifacts
         type: boolean
@@ -244,10 +454,21 @@ jobs:
     executor: << parameters.executor >>
     steps:
       - execute:
-          analysis-prepare: << parameters.analysis-prepare >>
+          prepare-to-execute: << parameters.prepare-to-execute >>
+          prepare-to-analyze: << parameters.prepare-to-analyze >>
+          should-find: << parameters.should-find >>
+          patterns-to-include: << parameters.patterns-to-include >>
+          patterns-to-exclude: << parameters.patterns-to-exclude >>
+          starting-points: << parameters.starting-points >>
           analysis-name: << parameters.analysis-name >>
           analysis-command: << parameters.analysis-command >>
           analysis-arguments: << parameters.analysis-arguments >>
+          analysis-result-header-command: << parameters.analysis-result-header-command >>
+          analysis-result-header-arguments: << parameters.analysis-result-header-arguments >>
+          analysis-result-footer-command: << parameters.analysis-result-footer-command >>
+          analysis-result-footer-arguments: << parameters.analysis-result-footer-arguments >>
+          analysis-result-transformation-command: << parameters.analysis-result-transformation-command >>
+          analysis-result-transformation-arguments: << parameters.analysis-result-transformation-arguments >>
           calculate-options: << parameters.calculate-options >>
           test-results-path: << parameters.test-results-path >>
           analysis-results-path: << parameters.analysis-results-path >>
@@ -262,19 +483,20 @@ examples:
     usage:
       version: 2.1
       orbs:
-        dscar: naokikimura/dscar@0.0.10
-      executors:
-        ruby:
-          docker:
-            - image: circleci/ruby:latest
+        dscar: naokikimura/dscar@0.1.0
       workflows:
         analyze-code-statically:
           jobs:
             - dscar/execute:
-                executor: ruby
+                name: brakeman
+                executor:
+                  name: dscar/default
+                  docker-image: circleci/ruby
+                prepare-to-execute:
+                  - run: sudo gem install brakeman
                 analysis-name: Brakeman
                 analysis-command: brakeman
                 analysis-arguments: -f junit
-                analysis-prepare:
-                  - run: sudo gem install brakeman
-                calculate-options: --test-case-key='concat(@classname,"#",@name,"=>",normalize-space())' --namespace='brakeman=https://brakemanscanner.org/'
+                calculate-options: |
+                  --test-case-key=concat(@classname,"#",@name,"=>",normalize-space())
+                  --namespace=brakeman=https://brakemanscanner.org/

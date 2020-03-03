@@ -206,7 +206,7 @@ commands:
         type: steps
         default: []
       analyze:
-        description:
+        description: Specify analysis steps
         type: steps
         default:
           - analyze
@@ -283,11 +283,120 @@ commands:
                 path: << parameters.analysis-results-path >>
 
 jobs:
+  analyze:
+    description: Analyze code statically
+    parameters:
+      executor:
+        description: Specify the image used to execute Analysis
+        type: executor
+        default: default
+      is-target-branch-base:
+        description: Check-out the BASE branch if true is specified
+        type: boolean
+        default: false
+      analysis-name:
+        description: Analysis name
+        type: string
+        default: "true"
+      analyze:
+        description: Specify analysis steps
+        type: steps
+        default:
+          - analyze
+      analysis-results-path:
+        description: Specify the path to save the analysis results if you need to change it
+        type: string
+        default: "/tmp/analysis-results"
+    executor: << parameters.executor >>
+    steps:
+      - run:
+          name: Setup
+          environment:
+            ANALYSIS_NAME: << parameters.analysis-name >>
+            ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
+          command: |
+              set -x
+
+              RESULTS_DIR="${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}/${ANALYSIS_NAME:-true}"
+              if << parameters.is-target-branch-base >>
+              then RESULT_FILENAME_PREFIX=BASE
+              else RESULT_FILENAME_PREFIX=HEAD
+              fi
+
+              mkdir -p "${RESULTS_DIR}"
+              echo "export RESULTS_PATH=\"${RESULTS_DIR}/${RESULT_FILENAME_PREFIX}-analysis-results.xml\"" >> $BASH_ENV
+      - checkout
+      - when:
+          condition: << parameters.is-target-branch-base >>
+          steps:
+            - compare-url/reconstruct:
+                debug: true
+            - compare-url/use:
+                step-name: Checkout BASE code
+                custom-logic: set +e; git checkout $(cat BASE_COMPARE_COMMIT.txt) || git checkout HEAD^
+      - steps: << parameters.analyze >>
+      - store_test_results:
+          path: << parameters.analysis-results-path >>
+
+  calculate:
+    description: |
+      Calculate the difference between the analysis results
+
+      Use the [junit-reports-combiner][1] command to calculate the difference
+
+      [1]: https://www.npmjs.com/package/junit-reports-combiner
+    parameters:
+      executor:
+        description: Specify the image used to execute Analysis
+        type: executor
+        default: default
+      options:
+        description: Specify options for the junit-reports-combiner command
+        type: string
+        default: ""
+      first-results-path:
+        description: Path of the file to use as the minuend
+        type: string
+        default: "HEAD-analysis-results.xml"
+      second-results-path:
+        description: Path of the file to use as the subtrahend
+        type: string
+        default: "BASE-analysis-results.xml"
+      analysis-name:
+        description: Analysis name
+        type: string
+        default: "true"
+      test-results-path:
+        description: Specify the value of the path parameter in the store_test_results step if you need to change it
+        type: string
+        default: "/tmp/test-results"
+      should-install-node_js:
+        description: Specify true if the execution environment does not have Node.js installed
+        type: boolean
+        default: false
+    executor: << parameters.executor >>
+    steps:
+      - run:
+          name: Setup
+          environment:
+            ANALYSIS_NAME: << parameters.analysis-name >>
+            TEST_RESULTS_PATH: << parameters.test-results-path >>
+          command: |
+              mkdir -p "${TEST_RESULTS_PATH:-/tmp/test-results}/${ANALYSIS_NAME:-true}"
+      - calculate:
+          options: << parameters.options >>
+          first-results-path: << parameters.first-results-path >>
+          second-results-path: << parameters.second-results-path >>
+          delta-results-path: << parameters.test-results-path >>/<< parameters.analysis-name >>/DELTA-analysis-results.xml
+          should-install-node_js: << parameters.should-install-node_js >>
+      - store_test_results:
+          path: << parameters.test-results-path >>
+
   execute:
     description: Calculate the difference of static code analysis results between HEAD branch and BASE branch
     parameters:
       executor:
-        description: 
+        description: Specify the image used to execute Analysis
         type: executor
         default: default
       prepare-to-execute:
@@ -299,7 +408,7 @@ jobs:
         type: string
         default: "true"
       analyze:
-        description:
+        description: Specify analysis steps
         type: steps
         default:
           - analyze
@@ -341,7 +450,7 @@ examples:
     usage:
       version: 2.1
       orbs:
-        dscar: naokikimura/dscar@0.1.0
+        dscar: naokikimura/dscar@0.4.0
       workflows:
         analyze-code-statically:
           jobs:
@@ -360,3 +469,62 @@ examples:
                 calculate-options: |
                   --test-case-key=concat(@classname,"#",@name,"=>",normalize-space())
                   --namespace=brakeman=https://brakemanscanner.org/
+  parallel-analysis:
+    description: Execute HEAD and BASE analysis jobs in parallel and calculate the difference by using the results of each in subsequent jobs
+    usage:
+      version: 2.1
+      orbs:
+        dscar: naokikimura/dscar@0.4.0
+      workflows:
+        analyze-code-statically:
+          jobs:
+            - dscar/analyze:
+                name: analyze head using brakeman
+                executor:
+                  name: dscar/default
+                  docker-image: circleci/ruby
+                is-target-branch-base: false
+                analysis-name: Brakeman
+                analyze:
+                  - dscar/analyze:
+                      prepare:
+                        - run: sudo gem install brakeman
+                      analysis-command: brakeman
+                      analysis-arguments: -f junit
+                analysis-results-path: /tmp/workspace/analysis-results
+                post-steps:
+                  - persist_to_workspace:
+                      root: /tmp/workspace
+                      paths:
+                        - analysis-results
+            - dscar/analyze:
+                name: analyze base using brakeman
+                executor:
+                  name: dscar/default
+                  docker-image: circleci/ruby
+                is-target-branch-base: true
+                analysis-name: Brakeman
+                analyze:
+                  - dscar/analyze:
+                      prepare:
+                        - run: sudo gem install brakeman
+                      analysis-command: brakeman
+                      analysis-arguments: -f junit
+                analysis-results-path: /tmp/workspace/analysis-results
+                post-steps:
+                  - persist_to_workspace:
+                      root: /tmp/workspace
+                      paths:
+                        - analysis-results
+            - dscar/calculate:
+                options: |
+                  --test-case-key=concat(@classname,"#",@name,"=>",normalize-space())
+                  --namespace=brakeman=https://brakemanscanner.org/
+                first-results-path: /tmp/workspace/analysis-results/Brakeman/HEAD-analysis-results.xml
+                second-results-path: /tmp/workspace/analysis-results/Brakeman/BASE-analysis-results.xml
+                pre-steps:
+                  - attach_workspace:
+                      at: /tmp/workspace
+                requires:
+                  - analyze head using brakeman
+                  - analyze base using brakeman

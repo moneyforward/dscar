@@ -222,6 +222,10 @@ commands:
         description: Specify options for the junit-reports-combiner command
         type: string
         default: ""
+      should-install-node_js:
+        description: Specify true if the execution environment does not have Node.js installed
+        type: boolean
+        default: false
       test-results-path:
         description: Specify the value of the path parameter in the store_test_results step if you need to change it
         type: string
@@ -269,6 +273,7 @@ commands:
           first-results-path: << parameters.analysis-results-path >>/<< parameters.analysis-name >>/HEAD-analysis-results.xml
           second-results-path: << parameters.analysis-results-path >>/<< parameters.analysis-name >>/BASE-analysis-results.xml
           delta-results-path: << parameters.test-results-path >>/<< parameters.analysis-name >>/DELTA-analysis-results.xml
+          should-install-node_js: << parameters.should-install-node_js >>
       - store_test_results:
           path: << parameters.test-results-path >>
       - when:
@@ -306,6 +311,10 @@ jobs:
         description: Specify options for the junit-reports-combiner command
         type: string
         default: ""
+      should-install-node_js:
+        description: Specify true if the execution environment does not have Node.js installed
+        type: boolean
+        default: false
       test-results-path:
         description: Specify the value of the path parameter in the store_test_results step if you need to change it
         type: string
@@ -319,9 +328,11 @@ jobs:
       - execute:
           prepare-to-execute: << parameters.prepare-to-execute >>
           analysis-name: << parameters.analysis-name >>
-          calculate-options: << parameters.calculate-options >>
-          test-results-path: << parameters.test-results-path >>
+          analyze: << parameters.analyze >>
           analysis-results-path: << parameters.analysis-results-path >>
+          calculate-options: << parameters.calculate-options >>
+          should-install-node_js: << parameters.should-install-node_js >>
+          test-results-path: << parameters.test-results-path >>
           should-save-analysis-results-as-artifacts: << parameters.should-save-analysis-results-as-artifacts >>
 
 examples:

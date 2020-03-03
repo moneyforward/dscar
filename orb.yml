@@ -98,6 +98,10 @@ commands:
         description: Specify the upper limit of the exit code that is regarded as normal termination
         type: integer
         default: 124
+      no-output-timeout:
+        description: Elapsed time the command can run without output. The string is a decimal with unit suffix, such as “20m”, “1.25h”, “5s”
+        type: string
+        default: 10m
     steps:
       - steps: << parameters.prepare >>
       - run:
@@ -110,12 +114,12 @@ commands:
             ANALYSIS_COMMAND: << parameters.analysis-command >>
             HEADER_COMMAND: << parameters.header-command >>
             FOOTER_COMMAND: << parameters.footer-command >>
+            TRANSFORMATION_COMMAND: << parameters.transformation-command >>
             PARAM_ANALYSIS_ARGUMENTS: << parameters.analysis-arguments >>
             PARAM_HEADER_ARGUMENTS: << parameters.header-arguments >>
             PARAM_FOOTER_ARGUMENTS: << parameters.footer-arguments >>
             PARAM_TRANSFORMATION_ARGUMENTS: << parameters.transformation-arguments >>
-            TRANSFORMATION_COMMAND: << parameters.transformation-command >>
-            RESULTS_PATH: << parameters.results-path >>
+            PARAM_RESULTS_PATH: << parameters.results-path >>
           command: |
               set +e -x
               {
@@ -139,8 +143,9 @@ commands:
                   - \
                   <("${FOOTER_COMMAND:-true}" "${FOOTER_ARGUMENTS[@]}" ${PARAM_FOOTER_ARGUMENTS}) |
                 "${TRANSFORMATION_COMMAND:-cat}" "${TRANSFORMATION_ARGUMENTS[@]}" ${PARAM_TRANSFORMATION_ARGUMENTS}  |
-                tee "${RESULTS_PATH:-/dev/null}" ><< parameters.redirecting-output >> ||
+                tee "${RESULTS_PATH:-${PARAM_RESULTS_PATH:-/dev/null}}" ><< parameters.redirecting-output >> ||
                 test $? -lt << parameters.exit-code-threshold >> || << parameters.ignore-exit-code >>
+          no_output_timeout: << parameters.no-output-timeout >>
   calculate:
     description: |
       Calculate the difference between the analysis results
@@ -165,8 +170,15 @@ commands:
         description: Path to save difference of analysis results
         type: string
         default: "/dev/null"
+      should-install-node_js:
+        description: Specify true if the execution environment does not have Node.js installed
+        type: boolean
+        default: false
     steps:
-      - node/install
+      - when:
+          condition: << parameters.should-install-node_js >>
+          steps:
+            - node/install
       - run:
           name: Calculate the difference
           environment:
@@ -193,63 +205,19 @@ commands:
         description: Specify the required steps before execute if necessary
         type: steps
         default: []
-      prepare-to-analyze:
-        description: Specify the required steps before analysis if necessary
+      analyze:
+        description:
         type: steps
-        default: []
-      should-find:
-        description: Specify true if you want to find for analysis targets
-        type: enum
-        enum: ["true", "false"]
-        default: "false"
-      patterns-to-include:
-        description: Specify patterns to include by regular expression (Multiple patterns can be specified by separating them with line feed)
-        type: string
-        default: ".*"
-      patterns-to-exclude:
-        description: Specify patterns to exclude by regular expression (Multiple patterns can be specified by separating them with line feed)
-        type: string
-        default: ""
-      starting-points:
-        description: Specify the path of starting to search for files to analyze (Multiple paths can be specified by separating them with line feed)
-        type: string
-        default: "."
+        default:
+          - analyze
       analysis-name:
         description: Analysis name
         type: string
         default: "true"
-      analysis-command:
-        description: The command used for analysis
+      analysis-results-path:
+        description: Specify the path to save the analysis results if you need to change it
         type: string
-        default: "true"
-      analysis-arguments:
-        description: Arguments of analysis command
-        type: string
-        default: ""
-      analysis-result-header-command:
-        description: The command used for header of analysis result
-        type: string
-        default: "true"
-      analysis-result-header-arguments:
-        description: Arguments of header command
-        type: string
-        default: ""
-      analysis-result-footer-command:
-        description: The command used for footer of analysis result
-        type: string
-        default: "true"
-      analysis-result-footer-arguments:
-        description: Arguments of footer command
-        type: string
-        default: ""
-      analysis-result-transformation-command:
-        description: The command used for transformation
-        type: string
-        default: "cat"
-      analysis-result-transformation-arguments:
-        description: Arguments of transformation command
-        type: string
-        default: ""
+        default: "/tmp/analysis-results"
       calculate-options:
         description: Specify options for the junit-reports-combiner command
         type: string
@@ -258,37 +226,15 @@ commands:
         description: Specify the value of the path parameter in the store_test_results step if you need to change it
         type: string
         default: "/tmp/test-results"
-      analysis-results-path:
-        description: Specify the path to save the analysis results if you need to change it
-        type: string
-        default: "/tmp/analysis-results"
-      redirecting-output:
-        description: Specify "/dev/null" if you do not want to display the analysis results on the standard output
-        type: enum
-        enum: ["/dev/stdout", "/dev/stderr", "/dev/null"]
-        default: "/dev/stdout"
       project-path:
         description: Absolute path to your project's base directory, necessary for running git commands
         type: string
         default: $CIRCLE_WORKING_DIRECTORY
-      ignore-analysis-exit-code:
-        description: Specify true if you want the exit code of the analysis step to always return 0.
-        type: boolean
-        default: false
-      analysis-exit-code-threshold:
-        description: Specify the upper limit of the exit code that is regarded as normal termination
-        type: integer
-        default: 124
       should-save-analysis-results-as-artifacts:
         description: Specify true if analysis results should be saved as artifacts
         type: boolean
         default: false
     steps:
-      - steps: << parameters.prepare-to-execute >>
-      - checkout
-      - compare-url/reconstruct:
-          project-path: '`eval echo << parameters.project-path >>`'
-          debug: true
       - run:
           name: Setup
           environment:
@@ -298,48 +244,26 @@ commands:
           command: |
               mkdir -p "${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}/${ANALYSIS_NAME:-true}"
               mkdir -p "${TEST_RESULTS_PATH:-/tmp/test-results}/${ANALYSIS_NAME:-true}"
-      - analyze:
-          step-name: Analyze the HEAD branch using << parameters.analysis-name >>
-          prepare: << parameters.prepare-to-analyze >>
-          should-find: << parameters.should-find >>
-          patterns-to-include: << parameters.patterns-to-include >>
-          patterns-to-exclude: << parameters.patterns-to-exclude >>
-          starting-points: << parameters.starting-points >>
-          analysis-command: << parameters.analysis-command >>
-          analysis-arguments: << parameters.analysis-arguments >>
-          header-command: << parameters.analysis-result-header-command >>
-          header-arguments: << parameters.analysis-result-header-arguments >>
-          footer-command: << parameters.analysis-result-footer-command >>
-          footer-arguments: << parameters.analysis-result-footer-arguments >>
-          transformation-command: << parameters.analysis-result-transformation-command >>
-          transformation-arguments: << parameters.analysis-result-transformation-arguments >>
-          results-path: << parameters.analysis-results-path >>/<< parameters.analysis-name >>/HEAD-analysis-results.xml
-          redirecting-output: << parameters.redirecting-output >>
-          ignore-exit-code: << parameters.ignore-analysis-exit-code >>
-          exit-code-threshold: << parameters.analysis-exit-code-threshold >>
+      - steps: << parameters.prepare-to-execute >>
+      - checkout
+      - run:
+          environment:
+            PARAM_RESULTS_PATH: << parameters.analysis-results-path >>/<< parameters.analysis-name >>/HEAD-analysis-results.xml
+          command: echo "export RESULTS_PATH=\"${PARAM_RESULTS_PATH}\"" >> $BASH_ENV
+      - steps: << parameters.analyze >>
+      - compare-url/reconstruct:
+          project-path: '`eval echo << parameters.project-path >>`'
+          debug: true
       - compare-url/use:
+          step-name: Checkout BASE code
           custom-logic: |
               set +e
               git checkout $(cat BASE_COMPARE_COMMIT.txt) || git checkout HEAD^
-      - analyze:
-          step-name: Analyze the BASE branch using << parameters.analysis-name >>
-          prepare: << parameters.prepare-to-analyze >>
-          should-find: << parameters.should-find >>
-          patterns-to-include: << parameters.patterns-to-include >>
-          patterns-to-exclude: << parameters.patterns-to-exclude >>
-          starting-points: << parameters.starting-points >>
-          analysis-command: << parameters.analysis-command >>
-          analysis-arguments: << parameters.analysis-arguments >>
-          header-command: << parameters.analysis-result-header-command >>
-          header-arguments: << parameters.analysis-result-header-arguments >>
-          footer-command: << parameters.analysis-result-footer-command >>
-          footer-arguments: << parameters.analysis-result-footer-arguments >>
-          transformation-command: << parameters.analysis-result-transformation-command >>
-          transformation-arguments: << parameters.analysis-result-transformation-arguments >>
-          results-path: << parameters.analysis-results-path >>/<< parameters.analysis-name >>/BASE-analysis-results.xml
-          redirecting-output: << parameters.redirecting-output >>
-          ignore-exit-code: << parameters.ignore-analysis-exit-code >>
-          exit-code-threshold: << parameters.analysis-exit-code-threshold >>
+      - run:
+          environment:
+            PARAM_RESULTS_PATH: << parameters.analysis-results-path >>/<< parameters.analysis-name >>/BASE-analysis-results.xml
+          command: echo "export RESULTS_PATH=\"${PARAM_RESULTS_PATH}\"" >> $BASH_ENV
+      - steps: << parameters.analyze >>
       - calculate:
           options: << parameters.calculate-options >>
           first-results-path: << parameters.analysis-results-path >>/<< parameters.analysis-name >>/HEAD-analysis-results.xml
@@ -365,63 +289,19 @@ jobs:
         description: Specify the required steps before execute if necessary
         type: steps
         default: []
-      prepare-to-analyze:
-        description: Specify the required steps before analysis if necessary
-        type: steps
-        default: []
-      should-find:
-        description: Specify true if you want to find for analysis targets
-        type: enum
-        enum: ["true", "false"]
-        default: "false"
-      patterns-to-include:
-        description: Specify patterns to include by regular expression (Multiple patterns can be specified by separating them with line feed)
-        type: string
-        default: ".*"
-      patterns-to-exclude:
-        description: Specify patterns to exclude by regular expression (Multiple patterns can be specified by separating them with line feed)
-        type: string
-        default: ""
-      starting-points:
-        description: Specify the path of starting to search for files to analyze (Multiple paths can be specified by separating them with line feed)
-        type: string
-        default: "."
       analysis-name:
         description: Analysis name
         type: string
         default: "true"
-      analysis-command:
-        description: The command used for analysis
+      analyze:
+        description:
+        type: steps
+        default:
+          - analyze
+      analysis-results-path:
+        description: Specify the path to save the analysis results if you need to change it
         type: string
-        default: "true"
-      analysis-arguments:
-        description: Arguments of analysis command
-        type: string
-        default: ""
-      analysis-result-header-command:
-        description: The command used for header of analysis result
-        type: string
-        default: "true"
-      analysis-result-header-arguments:
-        description: Arguments of header command
-        type: string
-        default: ""
-      analysis-result-footer-command:
-        description: The command used for footer of analysis result
-        type: string
-        default: "true"
-      analysis-result-footer-arguments:
-        description: Arguments of footer command
-        type: string
-        default: ""
-      analysis-result-transformation-command:
-        description: The command used for transformation
-        type: string
-        default: "cat"
-      analysis-result-transformation-arguments:
-        description: Arguments of transformation command
-        type: string
-        default: ""
+        default: "/tmp/analysis-results"
       calculate-options:
         description: Specify options for the junit-reports-combiner command
         type: string
@@ -430,23 +310,6 @@ jobs:
         description: Specify the value of the path parameter in the store_test_results step if you need to change it
         type: string
         default: "/tmp/test-results"
-      analysis-results-path:
-        description: Specify the path to save the analysis results if you need to change it
-        type: string
-        default: "/tmp/analysis-results"
-      redirecting-output:
-        description: Specify "/dev/null" if you do not want to display the analysis results on the standard output
-        type: enum
-        enum: ["/dev/stdout", "/dev/stderr", "/dev/null"]
-        default: "/dev/stdout"
-      ignore-analysis-exit-code:
-        description: Specify true if you want the exit code of the analysis step to always return 0.
-        type: boolean
-        default: false
-      analysis-exit-code-threshold:
-        description: Specify the upper limit of the exit code that is regarded as normal termination
-        type: integer
-        default: 124
       should-save-analysis-results-as-artifacts:
         description: Specify true if analysis results should be saved as artifacts
         type: boolean
@@ -455,26 +318,10 @@ jobs:
     steps:
       - execute:
           prepare-to-execute: << parameters.prepare-to-execute >>
-          prepare-to-analyze: << parameters.prepare-to-analyze >>
-          should-find: << parameters.should-find >>
-          patterns-to-include: << parameters.patterns-to-include >>
-          patterns-to-exclude: << parameters.patterns-to-exclude >>
-          starting-points: << parameters.starting-points >>
           analysis-name: << parameters.analysis-name >>
-          analysis-command: << parameters.analysis-command >>
-          analysis-arguments: << parameters.analysis-arguments >>
-          analysis-result-header-command: << parameters.analysis-result-header-command >>
-          analysis-result-header-arguments: << parameters.analysis-result-header-arguments >>
-          analysis-result-footer-command: << parameters.analysis-result-footer-command >>
-          analysis-result-footer-arguments: << parameters.analysis-result-footer-arguments >>
-          analysis-result-transformation-command: << parameters.analysis-result-transformation-command >>
-          analysis-result-transformation-arguments: << parameters.analysis-result-transformation-arguments >>
           calculate-options: << parameters.calculate-options >>
           test-results-path: << parameters.test-results-path >>
           analysis-results-path: << parameters.analysis-results-path >>
-          redirecting-output: << parameters.redirecting-output >>
-          ignore-analysis-exit-code: << parameters.ignore-analysis-exit-code >>
-          analysis-exit-code-threshold: << parameters.analysis-exit-code-threshold >>
           should-save-analysis-results-as-artifacts: << parameters.should-save-analysis-results-as-artifacts >>
 
 examples:
@@ -495,8 +342,10 @@ examples:
                 prepare-to-execute:
                   - run: sudo gem install brakeman
                 analysis-name: Brakeman
-                analysis-command: brakeman
-                analysis-arguments: -f junit
+                analyze:
+                  - dscar/analyze:
+                      analysis-command: brakeman
+                      analysis-arguments: -f junit
                 calculate-options: |
                   --test-case-key=concat(@classname,"#",@name,"=>",normalize-space())
                   --namespace=brakeman=https://brakemanscanner.org/

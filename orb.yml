@@ -527,12 +527,15 @@ jobs:
           has-reconstructed: << parameters.has-reconstructed >>
           attach-compare-url-workspace: << parameters.attach-compare-url-workspace >>
       - steps: << parameters.analyze >>
-      - transform:
-          analysis-name: << parameters.analysis-name >>
-          analysis-results-path: << parameters.analysis-results-path >>
-          test-results-path: << parameters.test-results-path >>
-      - store_test_results:
-          path: << parameters.test-results-path >>
+      - when:
+          condition: << parameters.test-results-path >>
+          steps:
+            - transform:
+                analysis-name: << parameters.analysis-name >>
+                analysis-results-path: << parameters.analysis-results-path >>
+                test-results-path: << parameters.test-results-path >>
+            - store_test_results:
+                path: << parameters.test-results-path >>
   calculate:
     description: |
       Calculate the difference between the analysis results

@@ -3,7 +3,7 @@ version: 2.1
 description: |
   Delta Static Code Analysis Reports running on CircleCI
 
-  This Orb calculates the difference between two static code analysis results. However, the format of the static code analysis result must be JUnit XML. Using this Orb, you can get the static code analysis result for the update difference between HEAD branch and its BASE branch.
+  This Orb calculates the difference between two static code analysis results. However, the format of the static code analysis result must be Checkstyle XML. Using this Orb, you can get the static code analysis result for the update difference between HEAD branch and its BASE branch.
 
 orbs:
   compare-url: iynere/compare-url@1.2.0
@@ -78,7 +78,7 @@ commands:
                 workspace-root: << parameters.path >>
                 step-name: Checkout BASE code
                 custom-logic: set +e; git checkout $(cat BASE_COMPARE_COMMIT.txt) || git checkout HEAD^
-  set-analysis-result-path:
+  set-result-path:
     description: Set the save destination of the analysis result in the RESULTS_PATH environment variable
     parameters:
       analysis-name:
@@ -109,7 +109,7 @@ commands:
               fi
 
               echo "export RESULT_PATH=\"${RESULTS_DIR}/${RESULT_FILENAME_PREFIX}-analysis-results.xml\"" >> $BASH_ENV
-  set-result-paths:
+  set-analysis-result-paths:
     description:
     parameters:
       first-result-path:
@@ -132,10 +132,6 @@ commands:
         description: Specify the path to save the analysis results if you need to change it
         type: string
         default: "/tmp/analysis-results"
-      test-results-path:
-        description: Specify the value of the path parameter in the store_test_results step if you need to change it
-        type: string
-        default: "/tmp/test-results"
     steps:
       - run:
           name: export FIRST_RESULT_PATH SECOND_RESULT_PATH DELTA_RESULT_PATH
@@ -145,16 +141,13 @@ commands:
             DELTA_RESULT_PATH: << parameters.delta-result-path >>
             ANALYSIS_NAME: << parameters.analysis-name >>
             ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
-            TEST_RESULTS_PATH: << parameters.test-results-path >>
           command: |
               ANALYSIS_RESULTS_DIR="${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}/${ANALYSIS_NAME:-true}"
-              DELTA_RESULT_DIR="${TEST_RESULTS_PATH:-/tmp/test-results}/${ANALYSIS_NAME:-true}"
-
-              mkdir -p "${DELTA_RESULT_DIR}"
+              mkdir -p "${ANALYSIS_RESULTS_DIR}"
               cat \<<-EOT >> $BASH_ENV
               export FIRST_RESULT_PATH="${FIRST_RESULT_PATH:-${ANALYSIS_RESULTS_DIR}/HEAD-analysis-results.xml}"
               export SECOND_RESULT_PATH="${SECOND_RESULT_PATH:-${ANALYSIS_RESULTS_DIR}/BASE-analysis-results.xml}"
-              export DELTA_RESULT_PATH="${DELTA_RESULT_PATH:-${DELTA_RESULT_DIR}/DELTA-analysis-results.xml}"
+              export DELTA_RESULT_PATH="${DELTA_RESULT_PATH:-${ANALYSIS_RESULTS_DIR}/DELTA-analysis-results.xml}"
               EOT
   analyze:
     description: Analyze code statically
@@ -286,12 +279,12 @@ commands:
     description: |
       Calculate the difference between the analysis results
 
-      Use the [junit-reports-combiner][1] command to calculate the difference
+      Use the [checkstyle-reports-combiner][1] command to calculate the difference
 
       [1]: https://www.npmjs.com/package/junit-reports-combiner
     parameters:
       options:
-        description: Specify options for the junit-reports-combiner command
+        description: Specify options for the checkstyle-reports-combiner command
         type: string
         default: ""
       first-result-path:
@@ -305,7 +298,7 @@ commands:
       delta-result-path:
         description: Path to save difference of analysis result
         type: string
-        default: "/dev/null"
+        default: "DELTA-analysis-results.xml"
       should-install-node_js:
         description: Specify true if the execution environment does not have Node.js installed
         type: boolean
@@ -318,22 +311,116 @@ commands:
       - run:
           name: Calculate the difference
           environment:
-              COMMAND: junit-reports-combiner
+              COMMAND: checkstyle-reports-combiner
               OPTIONS: << parameters.options >>
               PARAM_FIRST_RESULT_PATH: << parameters.first-result-path >>
               PARAM_SECOND_RESULT_PATH: << parameters.second-result-path >>
               PARAM_DELTA_RESULT_PATH: << parameters.delta-result-path >>
+              SELECTOR: //exception|//error
           command: |
               set -x
               sudo apt-get install xmlstarlet
-              sudo npm install --global "$COMMAND"
+              sudo npm install --global junit-reports-combiner
 
               TEMP_FILE=$(mktemp)
               NODE_DEBUG="$COMMAND" "$COMMAND" $OPTIONS --operator=except \
                 "${FIRST_RESULT_PATH:-${PARAM_FIRST_RESULT_PATH:-HEAD-analysis-results.xml}}" \
                 "${SECOND_RESULT_PATH:-${PARAM_SECOND_RESULT_PATH:-BASE-analysis-results.xml}}" |
                 tee "$TEMP_FILE" "${DELTA_RESULT_PATH:-${PARAM_DELTA_RESULT_PATH:-/dev/null}}" | xmlstarlet fo
-              ! xmlstarlet sel -t -m '//failure|//error' -v '.' -n < "$TEMP_FILE" >/dev/null
+              ! xmlstarlet sel -t -m "$SELECTOR" -v '.' -n < "$TEMP_FILE" >/dev/null
+  transform:
+    description:
+    parameters:
+      analysis-name:
+        description: Analysis name
+        type: string
+        default: "true"
+      analysis-results-path:
+        description: Specify the path to save the analysis results if you need to change it
+        type: string
+        default: "/tmp/analysis-results"
+      test-results-path:
+        description: Specify the value of the path parameter in the store_test_results step if you need to change it
+        type: string
+        default: "/tmp/test-results"
+      pattern:
+        type: string
+        default: ".*"
+    steps:
+      - run: sudo apt-get install xmlstarlet
+      - run:
+          name: transform Checkstyle to JUnit
+          environment:
+              ANALYSIS_NAME: << parameters.analysis-name >>
+              ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
+              TEST_RESULTS_PATH: << parameters.test-results-path >>
+              PATTERN: << parameters.pattern >>
+          command: |
+              set -x
+
+              XSL_FILE=$(mktemp)
+              cat \<<-EOT > "$XSL_FILE"
+              <?xml version="1.0" encoding="UTF-8"?>
+              <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+                <xsl:output encoding="UTF-8" method="xml"></xsl:output>
+
+                <xsl:template match="/">
+                  <testsuites>
+                    <xsl:for-each select="//checkstyle">
+                      <xsl:apply-templates />
+                    </xsl:for-each>
+                  </testsuites>
+                </xsl:template>
+
+                <xsl:template match="file">
+                  <testsuite id="#{generate-id(.)}" package="${ANALYSIS_NAME}" timestamp="`date '+%Y-%m-%dT%H:%M:%S'`" hostname="`hostname`" time="0">
+                    <xsl:attribute name="name">
+                      <xsl:value-of select="@name" />
+                    </xsl:attribute>
+                    <xsl:attribute name="tests">
+                      <xsl:value-of select="count(error)" />
+                    </xsl:attribute>
+                    <xsl:attribute name="failures">
+                      <xsl:value-of select="count(error)" />
+                    </xsl:attribute>
+                    <xsl:attribute name="errors">
+                      <xsl:value-of select="count(exception)" />
+                    </xsl:attribute>
+                    <properties />
+                    <system-out />
+                    <system-err />
+                    <xsl:apply-templates select="node()" />
+                  </testsuite>
+                </xsl:template>
+
+                <xsl:template match="error">
+                  <testcase name="#{@source}" classname="${ANALYSIS_NAME}" time="0">
+                    <failure type="#{@severity}">
+                      <xsl:text>[</xsl:text>
+                      <xsl:value-of select="@severity" />
+                      <xsl:text>] </xsl:text>
+                      <xsl:value-of select="@message" />
+                      <xsl:text> - </xsl:text>
+                      <xsl:value-of select="@line" />
+                      <xsl:text> line, </xsl:text>
+                      <xsl:value-of select="number(@column)" />
+                      <xsl:text> column in </xsl:text>
+                      <xsl:value-of select="../@name" />
+                    </failure>
+                  </testcase>
+                </xsl:template>
+              </xsl:stylesheet>
+              EOT
+
+              ANALYSIS_RESULTS_PATH="${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}/${ANALYSIS_NAME:-true}"
+              TEST_RESULTS_PATH="${TEST_RESULTS_PATH:-/tmp/test-results}/${ANALYSIS_NAME:-true}"
+
+              find "$ANALYSIS_RESULTS_PATH" -type f -regex "$PATTERN" -printf '%P\n' |
+              while read -r RESULT_PATH
+              do
+                mkdir -p "${TEST_RESULTS_PATH}/`dirname $RESULT_PATH`"
+                xmlstarlet tr "$XSL_FILE" < "${ANALYSIS_RESULTS_PATH}/${RESULT_PATH}" > "${TEST_RESULTS_PATH}/${RESULT_PATH}"
+              done
   execute:
     description: alculate the difference of static code analysis results between HEAD branch and BASE branch
     parameters:
@@ -363,10 +450,6 @@ commands:
         type: steps
         default:
           - calculate
-      test-results-path:
-        description: Specify the value of the path parameter in the store_test_results step if you need to change it
-        type: string
-        default: "/tmp/test-results"
       project-path:
         description: "Absolute path to your project's base directory, necessary for running git commands (default: job’s working_directory)"
         type: string
@@ -375,7 +458,7 @@ commands:
       # steps to analyze HEAD
       - checkout-analysis-target:
           path: << parameters.project-path >>
-      - set-analysis-result-path:
+      - set-result-path:
           analysis-name: << parameters.analysis-name >>
           analysis-results-path: << parameters.analysis-results-path >>
       - steps: << parameters.analyze >>
@@ -385,16 +468,15 @@ commands:
           is-target-branch-base: true
           has-reconstructed: << parameters.has-reconstructed >>
           attach-compare-url-workspace: << parameters.attach-compare-url-workspace >>
-      - set-analysis-result-path:
+      - set-result-path:
           analysis-name: << parameters.analysis-name >>
           analysis-results-path: << parameters.analysis-results-path >>
           is-target-branch-base: true
       - steps: << parameters.analyze >>
       # steps to calculate the difference
-      - set-result-paths:
+      - set-analysis-result-paths:
           analysis-name: << parameters.analysis-name >>
           analysis-results-path: << parameters.analysis-results-path >>
-          test-results-path: << parameters.test-results-path >>
       - steps: << parameters.calculate >>
 
 jobs:
@@ -430,9 +512,13 @@ jobs:
         description: Specify the path to save the analysis results if you need to change it
         type: string
         default: "/tmp/analysis-results"
+      test-results-path:
+        description: Specify the value of the path parameter in the store_test_results step if you need to change it
+        type: string
+        default: "/tmp/test-results"
     executor: << parameters.executor >>
     steps:
-      - set-analysis-result-path:
+      - set-result-path:
           analysis-name: << parameters.analysis-name >>
           analysis-results-path: << parameters.analysis-results-path >>
           is-target-branch-base: << parameters.is-target-branch-base >>
@@ -441,8 +527,12 @@ jobs:
           has-reconstructed: << parameters.has-reconstructed >>
           attach-compare-url-workspace: << parameters.attach-compare-url-workspace >>
       - steps: << parameters.analyze >>
+      - transform:
+          analysis-name: << parameters.analysis-name >>
+          analysis-results-path: << parameters.analysis-results-path >>
+          test-results-path: << parameters.test-results-path >>
       - store_test_results:
-          path: << parameters.analysis-results-path >>
+          path: << parameters.test-results-path >>
   calculate:
     description: |
       Calculate the difference between the analysis results
@@ -474,11 +564,15 @@ jobs:
         default: "/tmp/test-results"
     executor: << parameters.executor >>
     steps:
-      - set-result-paths:
+      - set-analysis-result-paths:
+          analysis-name: << parameters.analysis-name >>
+          analysis-results-path: << parameters.analysis-results-path >>
+      - steps: << parameters.calculate >>
+      - transform:
           analysis-name: << parameters.analysis-name >>
           analysis-results-path: << parameters.analysis-results-path >>
           test-results-path: << parameters.test-results-path >>
-      - steps: << parameters.calculate >>
+          pattern: '.*/DELTA-analysis-results\.xml$'
       - store_test_results:
           path: << parameters.test-results-path >>
   execute:
@@ -518,10 +612,6 @@ jobs:
         description: Specify the value of the path parameter in the store_test_results step if you need to change it
         type: string
         default: "/tmp/test-results"
-      should-save-analysis-results-as-artifacts:
-        description: Specify true if analysis results should be saved as artifacts
-        type: boolean
-        default: false
     executor: << parameters.executor >>
     steps:
       - execute:
@@ -531,14 +621,13 @@ jobs:
           analyze: << parameters.analyze >>
           analysis-results-path: << parameters.analysis-results-path >>
           calculate: << parameters.calculate >>
+      - transform:
+          analysis-name: << parameters.analysis-name >>
+          analysis-results-path: << parameters.analysis-results-path >>
           test-results-path: << parameters.test-results-path >>
+          pattern: '.*/DELTA-analysis-results\.xml$'
       - store_test_results:
           path: << parameters.test-results-path >>
-      - when:
-          condition: << parameters.should-save-analysis-results-as-artifacts >>
-          steps:
-            - store_artifacts:
-                path: << parameters.analysis-results-path >>
 
 examples:
   dscar-brakeman:
@@ -546,83 +635,68 @@ examples:
     usage:
       version: 2.1
       orbs:
-        dscar: naokikimura/dscar@0.5.0
+        dscar: naokikimura/dscar@0.6.0
       workflows:
         analyze-code-statically:
           jobs:
             - dscar/execute:
-                name: brakeman
+                name: reek
                 executor:
                   name: dscar/default
                   docker-image: circleci/ruby
-                prepare-to-execute:
-                  - run: sudo gem install brakeman
-                analysis-name: Brakeman
+                pre-steps:
+                  - run: sudo gem install reek
+                analysis-name: Reek
                 analyze:
                   - dscar/analyze:
-                      analysis-command: brakeman
-                      analysis-arguments: -f junit
-                calculate-options: |
-                  --test-case-key=concat(@classname,"#",@name,"=>",normalize-space())
-                  --namespace=brakeman=https://brakemanscanner.org/
+                      analysis-command: reek
+                      analysis-arguments: -f xml
   parallel-analysis:
     description: Execute HEAD and BASE analysis jobs in parallel and calculate the difference by using the results of each in subsequent jobs
     usage:
       version: 2.1
       orbs:
-        dscar: naokikimura/dscar@0.5.0
+        dscar: naokikimura/dscar@0.6.0
       workflows:
         analyze-code-statically:
           jobs:
-            - dscar/analyze:
-                name: analyze head using brakeman
+            - dscar/analyze: &analyze
+                name: analyze head using eslint
+                analysis-name: ESLint
+                has-reconstructed: true
                 executor:
                   name: dscar/default
-                  docker-image: circleci/ruby
-                is-target-branch-base: false
-                analysis-name: Brakeman
+                  docker-image: circleci/node:10.16.0
+                pre-steps:
+                  - attach_workspace:
+                      at: .
+                  - run: npm install
+                analysis-results-path: /tmp/workspace/analysis-results
                 analyze:
                   - dscar/analyze:
-                      prepare:
-                        - run: sudo gem install brakeman
-                      analysis-command: brakeman
-                      analysis-arguments: -f junit
-                analysis-results-path: /tmp/workspace/analysis-results
+                      prepare: []
+                      starting-points: 'client/src/**/*.@(ts|tsx)'
+                      analysis-command: npx
+                      analysis-arguments: eslint --ext .js,.jsx,.ts,.tsx -f checkstyle
                 post-steps:
+                  - store_artifacts:
+                      path: /tmp/analysis-results
                   - persist_to_workspace:
                       root: /tmp/workspace
                       paths:
                         - analysis-results
+                requires:
+                  - checkout
             - dscar/analyze:
-                name: analyze base using brakeman
-                executor:
-                  name: dscar/default
-                  docker-image: circleci/ruby
+                <<: *analyze
+                name: analyze base using eslint
                 is-target-branch-base: true
-                analysis-name: Brakeman
-                analyze:
-                  - dscar/analyze:
-                      prepare:
-                        - run: sudo gem install brakeman
-                      analysis-command: brakeman
-                      analysis-arguments: -f junit
-                analysis-results-path: /tmp/workspace/analysis-results
-                post-steps:
-                  - persist_to_workspace:
-                      root: /tmp/workspace
-                      paths:
-                        - analysis-results
             - dscar/calculate:
-                analysis-name: Brakeman
+                analysis-name: ESLint
                 analysis-results-path: /tmp/workspace/analysis-results
-                calculate:
-                  - dscar/calculate:
-                      options: |
-                        --test-case-key=concat(@classname,"#",@name,"=>",normalize-space())
-                        --namespace=brakeman=https://brakemanscanner.org/
                 pre-steps:
                   - attach_workspace:
                       at: /tmp/workspace
                 requires:
-                  - analyze head using brakeman
-                  - analyze base using brakeman
+                  - analyze head using eslint
+                  - analyze base using eslint

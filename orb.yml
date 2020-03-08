@@ -346,8 +346,12 @@ commands:
       pattern:
         type: string
         default: ".*"
+      when:
+        description: "Specify when to enable or disable the step. Takes the following values: always, on_success, on_fail (default: on_fail)"
+        type: enum
+        enum: [on_success, always, on_fail]
+        default: on_fail
     steps:
-      - run: sudo apt-get install xmlstarlet
       - run:
           name: transform Checkstyle to JUnit
           environment:
@@ -357,6 +361,8 @@ commands:
               PATTERN: << parameters.pattern >>
           command: |
               set -x
+
+              sudo apt-get install xmlstarlet
 
               XSL_FILE=$(mktemp)
               cat \<<-EOT > "$XSL_FILE"
@@ -421,6 +427,7 @@ commands:
                 mkdir -p "${TEST_RESULTS_PATH}/`dirname $RESULT_PATH`"
                 xmlstarlet tr "$XSL_FILE" < "${ANALYSIS_RESULTS_PATH}/${RESULT_PATH}" > "${TEST_RESULTS_PATH}/${RESULT_PATH}"
               done
+          when: << parameters.when >>
   execute:
     description: alculate the difference of static code analysis results between HEAD branch and BASE branch
     parameters:

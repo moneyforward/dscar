@@ -1,9 +1,5 @@
 description: Analyze the code statically and then evaluate the result
 parameters:
-  executor:
-    description: Specify the image used to execute analysis
-    type: executor
-    default: default
   is-target-branch-base:
     description: Check-out the BASE branch if true is specified
     type: boolean
@@ -37,14 +33,30 @@ parameters:
     description: Specify the environment variable name where the VCS (Version Control System) API token is set.
     type: env_var_name
     default: GITHUB_TOKEN
-executor: << parameters.executor >>
 steps:
-  - analyze-and-evaluate:
+  - set-result-path:
+      analysis-name: << parameters.analysis-name >>
+      analysis-results-path: << parameters.analysis-results-path >>
+      is-target-branch-base: << parameters.is-target-branch-base >>
+  - checkout-analysis-target:
       is-target-branch-base: << parameters.is-target-branch-base >>
       has-reconstructed: << parameters.has-reconstructed >>
       attach-compare-url-workspace: << parameters.attach-compare-url-workspace >>
-      analysis-name: << parameters.analysis-name >>
-      analyze: << parameters.analyze >>
-      analysis-results-path: << parameters.analysis-results-path >>
-      test-results-path: << parameters.test-results-path >>
       vcs-api-token: << parameters.vcs-api-token >>
+  - steps: << parameters.analyze >>
+  - when:
+      condition: << parameters.test-results-path >>
+      steps:
+        - evaluate:
+            analysis-name: << parameters.analysis-name >>
+            analysis-results-path: << parameters.analysis-results-path >>
+        - transform:
+            analysis-name: << parameters.analysis-name >>
+            analysis-results-path: << parameters.analysis-results-path >>
+            test-results-path: << parameters.test-results-path >>
+        - store_test_results:
+            path: << parameters.test-results-path >>
+        - comment:
+            analysis-name: << parameters.analysis-name >>
+            analysis-results-path: << parameters.analysis-results-path >>
+            vcs-api-token: << parameters.vcs-api-token >>

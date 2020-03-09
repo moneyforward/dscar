@@ -1,9 +1,5 @@
 description: Calculate the difference of static code analysis results between HEAD branch and BASE branch and then evaluate the result
 parameters:
-  executor:
-    description: Specify the image used to execute analysis
-    type: executor
-    default: default
   has-reconstructed:
     description: Specify true if `compare-url/reconstruct` has not been executed yet
     type: boolean
@@ -38,14 +34,28 @@ parameters:
     description: Specify the environment variable name where the VCS (Version Control System) API token is set.
     type: env_var_name
     default: GITHUB_TOKEN
-executor: << parameters.executor >>
 steps:
-  - execute-and-evaluate:
+  - execute:
       has-reconstructed: << parameters.has-reconstructed >>
       attach-compare-url-workspace: << parameters.attach-compare-url-workspace >>
       analysis-name: << parameters.analysis-name >>
       analyze: << parameters.analyze >>
       analysis-results-path: << parameters.analysis-results-path >>
       calculate: << parameters.calculate >>
+      vcs-api-token: << parameters.vcs-api-token >>
+  - evaluate:
+      analysis-name: << parameters.analysis-name >>
+      analysis-results-path: << parameters.analysis-results-path >>
+      pattern: '.*/DELTA-analysis-results\.xml$'
+  - transform:
+      analysis-name: << parameters.analysis-name >>
+      analysis-results-path: << parameters.analysis-results-path >>
       test-results-path: << parameters.test-results-path >>
+      pattern: '.*/DELTA-analysis-results\.xml$'
+  - store_test_results:
+      path: << parameters.test-results-path >>
+  - comment:
+      analysis-name: << parameters.analysis-name >>
+      analysis-results-path: << parameters.analysis-results-path >>
+      pattern: '.*/DELTA-analysis-results\.xml$'
       vcs-api-token: << parameters.vcs-api-token >>

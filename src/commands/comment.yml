@@ -43,10 +43,11 @@ steps:
               while read -r RESULT_PATH
               do
                 {
-                  xmlstarlet sel -t -m '//error' -o "${CIRCLE_SHA1}" -o $'\t' -v "substring-after(../@name,'${PWD}')" -o $'\t' -v '@line' -o $'\t' -e 'p' -o "[${ANALYSIS_NAME}] " -v '@message' -e 'details' -o 'Rule: "' -v '@source' -o '"; severity: "' -v '@severity' -o '";' -e 'p' -v '@line' -o ' line, ' -v 'number(@column)' -o ' column in ' -v "substring-after(../@name,'${PWD}')" -n |
+                  xmlstarlet sel -B -t -m '//error' -o "${CIRCLE_SHA1}" -o $'\t' -v '../@name' -o $'\t' -v '@line' -o $'\t' -e 'p' -o "[${ANALYSIS_NAME}] " -v '@message' -e 'details' -o 'Rule: "' -v '@source' -o '"; severity: "' -v '@severity' -o '";' -e 'p' -v '@line' -o ' line, ' -v 'number(@column)' -o ' column in ' -v '../@name' -b -b -b -n |
                   while read -r LINE
                   do
                     echo "$LINE" |
+                    sed -e "s/${PWD//\//\\/}\///" |
                     jq -cMR 'split("\t")|{commit_id:.[0],path:.[1],line:.[2]|tonumber,side:"RIGHT",body:.[3]}' |
                     tee /dev/stderr |
                     curl -SsL -H "Authorization: token ${<< parameters.vcs-api-token >>}" -H "Content-Type: application/json" --data-binary @- "${URL}"

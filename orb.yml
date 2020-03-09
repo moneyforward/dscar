@@ -45,6 +45,10 @@ commands:
         description: "Attach a workspace for this command to use? Useful when `compare-url` orb's `reconstruct` job is called upstream in a given workflow"
         type: boolean
         default: false
+      vcs-api-token:
+        description: Specify the environment variable name where the VCS (Version Control System) API token is set.
+        type: env_var_name
+        default: GITHUB_TOKEN
     steps:
       - when:
           condition: << parameters.path >>
@@ -73,6 +77,23 @@ commands:
                         - compare-url/reconstruct:
                             debug: true
                             project-path: '`eval echo $CIRCLE_WORKING_DIRECTORY`'
+            - run:
+                name: Change BASE if it is a pull request
+                command: |
+                    set -x
+
+                    if [ -v CIRCLE_PULL_REQUEST ]
+                    then
+                      if echo "$CIRCLE_PULL_REQUEST" | grep '^https://github.com/'
+                      then
+                        sudo apt-get install jq
+                        PULL_REQUEST_PATH="${CIRCLE_PULL_REQUEST#https://github.com/}"
+                        URL="https://api.github.com/repos/${PULL_REQUEST_PATH/pull/pulls}"
+                        curl -SsfLH "Authorization: token ${<< parameters.vcs-api-token >>}" "${URL}" | jq -rM '.base.sha' > BASE_COMPARE_COMMIT.txt
+                      else
+                        echo "sorry. Only GitHub is supported."
+                      fi
+                    fi
             - compare-url/use:
                 attach-workspace: << parameters.attach-compare-url-workspace >>
                 workspace-root: << parameters.path >>
@@ -110,7 +131,12 @@ commands:
 
               echo "export RESULT_PATH=\"${RESULTS_DIR}/${RESULT_FILENAME_PREFIX}-analysis-results.xml\"" >> $BASH_ENV
   set-analysis-result-paths:
-    description:
+    description: |
+      Set the environment variables referenced by the calculate command.
+
+      - FIRST_RESULT_PATH
+      - SECOND_RESULT_PATH
+      - DELTA_RESULT_PATH
     parameters:
       first-result-path:
         description: Path of the file to use as the minuend
@@ -316,20 +342,50 @@ commands:
               PARAM_FIRST_RESULT_PATH: << parameters.first-result-path >>
               PARAM_SECOND_RESULT_PATH: << parameters.second-result-path >>
               PARAM_DELTA_RESULT_PATH: << parameters.delta-result-path >>
-              SELECTOR: //exception|//error
           command: |
               set -x
-              sudo apt-get install xmlstarlet
+
               sudo npm install --global junit-reports-combiner
 
               TEMP_FILE=$(mktemp)
               NODE_DEBUG="$COMMAND" "$COMMAND" $OPTIONS --operator=except \
                 "${FIRST_RESULT_PATH:-${PARAM_FIRST_RESULT_PATH:-HEAD-analysis-results.xml}}" \
                 "${SECOND_RESULT_PATH:-${PARAM_SECOND_RESULT_PATH:-BASE-analysis-results.xml}}" |
-                tee "$TEMP_FILE" "${DELTA_RESULT_PATH:-${PARAM_DELTA_RESULT_PATH:-/dev/null}}" | xmlstarlet fo
-              ! xmlstarlet sel -t -m "$SELECTOR" -v '.' -n < "$TEMP_FILE" >/dev/null
+                tee "$TEMP_FILE" "${DELTA_RESULT_PATH:-${PARAM_DELTA_RESULT_PATH:-/dev/null}}"
+  evaluate:
+    description: Evaluate analysis results
+    parameters:
+      analysis-name:
+        description: Analysis name
+        type: string
+        default: "true"
+      analysis-results-path:
+        description: Specify the path to save the analysis results if you need to change it
+        type: string
+        default: "/tmp/analysis-results"
+      pattern:
+        type: string
+        default: ".*"
+    steps:
+      - run:
+          name: Evaluate analysis results
+          environment:
+              ANALYSIS_NAME: << parameters.analysis-name >>
+              ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
+              PATTERN: << parameters.pattern >>
+              SELECTOR: //exception|//error
+          command: |
+              set -x
+
+              sudo apt-get install xmlstarlet
+
+              find "${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}/${ANALYSIS_NAME:-true}" -type f -regex "$PATTERN" |
+              while read -r RESULT_PATH
+              do
+                ! xmlstarlet sel -t -m "$SELECTOR" -v '.' -n < "$RESULT_PATH" >/dev/null || exit $?
+              done
   transform:
-    description:
+    description: transform Checkstyle to JUnit
     parameters:
       analysis-name:
         description: Analysis name
@@ -461,6 +517,10 @@ commands:
         description: "Absolute path to your project's base directory, necessary for running git commands (default: job’s working_directory)"
         type: string
         default: ""
+      vcs-api-token:
+        description: Specify the environment variable name where the VCS (Version Control System) API token is set.
+        type: env_var_name
+        default: GITHUB_TOKEN
     steps:
       # steps to analyze HEAD
       - checkout-analysis-target:
@@ -475,6 +535,7 @@ commands:
           is-target-branch-base: true
           has-reconstructed: << parameters.has-reconstructed >>
           attach-compare-url-workspace: << parameters.attach-compare-url-workspace >>
+          vcs-api-token: << parameters.vcs-api-token >>
       - set-result-path:
           analysis-name: << parameters.analysis-name >>
           analysis-results-path: << parameters.analysis-results-path >>
@@ -485,6 +546,73 @@ commands:
           analysis-name: << parameters.analysis-name >>
           analysis-results-path: << parameters.analysis-results-path >>
       - steps: << parameters.calculate >>
+  comment:
+    description: Add a review comment about the analysis result to the pull request
+    parameters:
+      analysis-name:
+        description: Analysis name
+        type: string
+        default: "true"
+      analysis-results-path:
+        description: Specify the path to save the analysis results if you need to change it
+        type: string
+        default: "/tmp/analysis-results"
+      pattern:
+        type: string
+        default: ".*"
+      vcs-api-token:
+        description: Specify the environment variable name where the VCS (Version Control System) API token is set.
+        type: env_var_name
+        default: GITHUB_TOKEN
+      when:
+        description: "Specify when to enable or disable the step. Takes the following values: always, on_success, on_fail (default: on_fail)"
+        type: enum
+        enum: [on_success, always, on_fail]
+        default: on_fail
+    steps:
+      - run:
+          name: Add a review comment to the pull request
+          environment:
+              ANALYSIS_NAME: << parameters.analysis-name >>
+              ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
+              PATTERN: << parameters.pattern >>
+          command: |
+              set -x
+
+              if [ -v CIRCLE_PULL_REQUEST ]
+              then
+                if echo "$CIRCLE_PULL_REQUEST" | grep '^https://github.com/'
+                then
+                  sudo apt-get install xmlstarlet jq
+
+                  PULL_REQUEST_PATH="${CIRCLE_PULL_REQUEST#https://github.com/}"
+                  URL="https://api.github.com/repos/${PULL_REQUEST_PATH/pull/pulls}/comments"
+
+                  find "${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}/${ANALYSIS_NAME:-true}" -type f -regex "$PATTERN" |
+                  while read -r RESULT_PATH
+                  do
+                    {
+                      xmlstarlet sel -t -m '//error' -o "${CIRCLE_SHA1}" -o $'\t' -v "substring-after(../@name,'${PWD}')" -o $'\t' -v '@line' -o $'\t' -e 'p' -o "[${ANALYSIS_NAME}] " -v '@message' -e 'details' -o 'Rule: "' -v '@source' -o '"; severity: "' -v '@severity' -o '";' -e 'p' -v '@line' -o ' line, ' -v 'number(@column)' -o ' column in ' -v "substring-after(../@name,'${PWD}')" -n |
+                      while read -r LINE
+                      do
+                        echo "$LINE" |
+                        jq -cMR 'split("\t")|{commit_id:.[0],path:.[1],line:.[2]|tonumber,side:"RIGHT",body:.[3]}' |
+                        tee /dev/stderr |
+                        curl -SsL -H "Authorization: token ${<< parameters.vcs-api-token >>}" -H "Content-Type: application/json" --data-binary @- "${URL}"
+                      done
+                    } < "$RESULT_PATH"
+                    {
+                      xmlstarlet sel -t -v 'count(//error)' -n |
+                      jq '{body:"@'$CIRCLE_USERNAME' \n :warning: '$ANALYSIS_NAME' pointed out \(.) issues. \n See '$CIRCLE_BUILD_URL'#tests"}' |
+                      tee /dev/stderr |
+                      curl -SsfL -H "Authorization: token ${<< parameters.vcs-api-token >>}" -H "Content-Type: application/json" --data-binary @- "${URL/pulls/issues}"
+                    } < "$RESULT_PATH"
+                  done
+                else
+                  echo "sorry. Only GitHub is supported."
+                fi
+              fi
+          when: << parameters.when >>
 
 jobs:
   analyze:
@@ -523,6 +651,10 @@ jobs:
         description: Specify the value of the path parameter in the store_test_results step if you need to change it
         type: string
         default: "/tmp/test-results"
+      vcs-api-token:
+        description: Specify the environment variable name where the VCS (Version Control System) API token is set.
+        type: env_var_name
+        default: GITHUB_TOKEN
     executor: << parameters.executor >>
     steps:
       - set-result-path:
@@ -533,16 +665,24 @@ jobs:
           is-target-branch-base: << parameters.is-target-branch-base >>
           has-reconstructed: << parameters.has-reconstructed >>
           attach-compare-url-workspace: << parameters.attach-compare-url-workspace >>
+          vcs-api-token: << parameters.vcs-api-token >>
       - steps: << parameters.analyze >>
       - when:
           condition: << parameters.test-results-path >>
           steps:
+            - evaluate:
+                analysis-name: << parameters.analysis-name >>
+                analysis-results-path: << parameters.analysis-results-path >>
             - transform:
                 analysis-name: << parameters.analysis-name >>
                 analysis-results-path: << parameters.analysis-results-path >>
                 test-results-path: << parameters.test-results-path >>
             - store_test_results:
                 path: << parameters.test-results-path >>
+            - comment:
+                analysis-name: << parameters.analysis-name >>
+                analysis-results-path: << parameters.analysis-results-path >>
+                vcs-api-token: << parameters.vcs-api-token >>
   calculate:
     description: |
       Calculate the difference between the analysis results
@@ -572,12 +712,20 @@ jobs:
         description: Specify the value of the path parameter in the store_test_results step if you need to change it
         type: string
         default: "/tmp/test-results"
+      vcs-api-token:
+        description: Specify the environment variable name where the VCS (Version Control System) API token is set.
+        type: env_var_name
+        default: GITHUB_TOKEN
     executor: << parameters.executor >>
     steps:
       - set-analysis-result-paths:
           analysis-name: << parameters.analysis-name >>
           analysis-results-path: << parameters.analysis-results-path >>
       - steps: << parameters.calculate >>
+      - evaluate:
+          analysis-name: << parameters.analysis-name >>
+          analysis-results-path: << parameters.analysis-results-path >>
+          pattern: '.*/DELTA-analysis-results\.xml$'
       - transform:
           analysis-name: << parameters.analysis-name >>
           analysis-results-path: << parameters.analysis-results-path >>
@@ -585,6 +733,11 @@ jobs:
           pattern: '.*/DELTA-analysis-results\.xml$'
       - store_test_results:
           path: << parameters.test-results-path >>
+      - comment:
+          analysis-name: << parameters.analysis-name >>
+          analysis-results-path: << parameters.analysis-results-path >>
+          pattern: '.*/DELTA-analysis-results\.xml$'
+          vcs-api-token: << parameters.vcs-api-token >>
   execute:
     description: Calculate the difference of static code analysis results between HEAD branch and BASE branch
     parameters:
@@ -622,6 +775,10 @@ jobs:
         description: Specify the value of the path parameter in the store_test_results step if you need to change it
         type: string
         default: "/tmp/test-results"
+      vcs-api-token:
+        description: Specify the environment variable name where the VCS (Version Control System) API token is set.
+        type: env_var_name
+        default: GITHUB_TOKEN
     executor: << parameters.executor >>
     steps:
       - execute:
@@ -631,6 +788,11 @@ jobs:
           analyze: << parameters.analyze >>
           analysis-results-path: << parameters.analysis-results-path >>
           calculate: << parameters.calculate >>
+          vcs-api-token: << parameters.vcs-api-token >>
+      - evaluate:
+          analysis-name: << parameters.analysis-name >>
+          analysis-results-path: << parameters.analysis-results-path >>
+          pattern: '.*/DELTA-analysis-results\.xml$'
       - transform:
           analysis-name: << parameters.analysis-name >>
           analysis-results-path: << parameters.analysis-results-path >>
@@ -638,6 +800,11 @@ jobs:
           pattern: '.*/DELTA-analysis-results\.xml$'
       - store_test_results:
           path: << parameters.test-results-path >>
+      - comment:
+          analysis-name: << parameters.analysis-name >>
+          analysis-results-path: << parameters.analysis-results-path >>
+          pattern: '.*/DELTA-analysis-results\.xml$'
+          vcs-api-token: << parameters.vcs-api-token >>
 
 examples:
   dscar-brakeman:
@@ -682,6 +849,7 @@ examples:
                       at: .
                   - run: npm install
                 analysis-results-path: /tmp/workspace/analysis-results
+                test-results-path: ""
                 analyze:
                   - dscar/analyze:
                       prepare: []

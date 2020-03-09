@@ -1,0 +1,50 @@
+description: |
+  Calculate the difference between the analysis results
+
+  Use the [checkstyle-reports-combiner][1] command to calculate the difference
+
+  [1]: https://www.npmjs.com/package/junit-reports-combiner
+parameters:
+  options:
+    description: Specify options for the checkstyle-reports-combiner command
+    type: string
+    default: ""
+  first-result-path:
+    description: Path of the file to use as the minuend
+    type: string
+    default: "HEAD-analysis-results.xml"
+  second-result-path:
+    description: Path of the file to use as the subtrahend
+    type: string
+    default: "BASE-analysis-results.xml"
+  delta-result-path:
+    description: Path to save difference of analysis result
+    type: string
+    default: "DELTA-analysis-results.xml"
+  should-install-node_js:
+    description: Specify true if the execution environment does not have Node.js installed
+    type: boolean
+    default: false
+steps:
+  - when:
+      condition: << parameters.should-install-node_js >>
+      steps:
+        - node/install
+  - run:
+      name: Calculate the difference
+      environment:
+          COMMAND: checkstyle-reports-combiner
+          OPTIONS: << parameters.options >>
+          PARAM_FIRST_RESULT_PATH: << parameters.first-result-path >>
+          PARAM_SECOND_RESULT_PATH: << parameters.second-result-path >>
+          PARAM_DELTA_RESULT_PATH: << parameters.delta-result-path >>
+      command: |
+          set -x
+
+          sudo npm install --global junit-reports-combiner
+
+          TEMP_FILE=$(mktemp)
+          NODE_DEBUG="$COMMAND" "$COMMAND" $OPTIONS --operator=except \
+            "${FIRST_RESULT_PATH:-${PARAM_FIRST_RESULT_PATH:-HEAD-analysis-results.xml}}" \
+            "${SECOND_RESULT_PATH:-${PARAM_SECOND_RESULT_PATH:-BASE-analysis-results.xml}}" |
+            tee "$TEMP_FILE" "${DELTA_RESULT_PATH:-${PARAM_DELTA_RESULT_PATH:-/dev/null}}"

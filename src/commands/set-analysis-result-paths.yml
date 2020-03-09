@@ -1,0 +1,44 @@
+description: |
+  Set the environment variables referenced by the calculate command.
+
+  - FIRST_RESULT_PATH
+  - SECOND_RESULT_PATH
+  - DELTA_RESULT_PATH
+parameters:
+  first-result-path:
+    description: Path of the file to use as the minuend
+    type: string
+    default: ""
+  second-result-path:
+    description: Path of the file to use as the subtrahend
+    type: string
+    default: ""
+  delta-result-path:
+    description: Path to save difference of analysis result
+    type: string
+    default: ""
+  analysis-name:
+    description: Analysis name
+    type: string
+    default: "true"
+  analysis-results-path:
+    description: Specify the path to save the analysis results if you need to change it
+    type: string
+    default: "/tmp/analysis-results"
+steps:
+  - run:
+      name: export FIRST_RESULT_PATH SECOND_RESULT_PATH DELTA_RESULT_PATH
+      environment:
+        FIRST_RESULT_PATH: << parameters.first-result-path >>
+        SECOND_RESULT_PATH: << parameters.second-result-path >>
+        DELTA_RESULT_PATH: << parameters.delta-result-path >>
+        ANALYSIS_NAME: << parameters.analysis-name >>
+        ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
+      command: |
+          ANALYSIS_RESULTS_DIR="${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}/${ANALYSIS_NAME:-true}"
+          mkdir -p "${ANALYSIS_RESULTS_DIR}"
+          cat \<<-EOT >> $BASH_ENV
+          export FIRST_RESULT_PATH="${FIRST_RESULT_PATH:-${ANALYSIS_RESULTS_DIR}/HEAD-analysis-results.xml}"
+          export SECOND_RESULT_PATH="${SECOND_RESULT_PATH:-${ANALYSIS_RESULTS_DIR}/BASE-analysis-results.xml}"
+          export DELTA_RESULT_PATH="${DELTA_RESULT_PATH:-${ANALYSIS_RESULTS_DIR}/DELTA-analysis-results.xml}"
+          EOT

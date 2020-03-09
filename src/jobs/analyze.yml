@@ -1,0 +1,67 @@
+description: Analyze code statically
+parameters:
+  executor:
+    description: Specify the image used to execute analysis
+    type: executor
+    default: default
+  is-target-branch-base:
+    description: Check-out the BASE branch if true is specified
+    type: boolean
+    default: false
+  has-reconstructed:
+    description: Specify true if `compare-url/reconstruct` has not been executed yet
+    type: boolean
+    default: false
+  attach-compare-url-workspace:
+    description: "Attach a workspace for this command to use? Useful when `compare-url` orb's `reconstruct` job is called upstream in a given workflow"
+    type: boolean
+    default: false
+  analysis-name:
+    description: Analysis name
+    type: string
+    default: "true"
+  analyze:
+    description: Specify analysis steps
+    type: steps
+    default:
+      - analyze
+  analysis-results-path:
+    description: Specify the path to save the analysis results if you need to change it
+    type: string
+    default: "/tmp/analysis-results"
+  test-results-path:
+    description: Specify the value of the path parameter in the store_test_results step if you need to change it
+    type: string
+    default: "/tmp/test-results"
+  vcs-api-token:
+    description: Specify the environment variable name where the VCS (Version Control System) API token is set.
+    type: env_var_name
+    default: GITHUB_TOKEN
+executor: << parameters.executor >>
+steps:
+  - set-result-path:
+      analysis-name: << parameters.analysis-name >>
+      analysis-results-path: << parameters.analysis-results-path >>
+      is-target-branch-base: << parameters.is-target-branch-base >>
+  - checkout-analysis-target:
+      is-target-branch-base: << parameters.is-target-branch-base >>
+      has-reconstructed: << parameters.has-reconstructed >>
+      attach-compare-url-workspace: << parameters.attach-compare-url-workspace >>
+      vcs-api-token: << parameters.vcs-api-token >>
+  - steps: << parameters.analyze >>
+  - when:
+      condition: << parameters.test-results-path >>
+      steps:
+        - evaluate:
+            analysis-name: << parameters.analysis-name >>
+            analysis-results-path: << parameters.analysis-results-path >>
+        - transform:
+            analysis-name: << parameters.analysis-name >>
+            analysis-results-path: << parameters.analysis-results-path >>
+            test-results-path: << parameters.test-results-path >>
+        - store_test_results:
+            path: << parameters.test-results-path >>
+        - comment:
+            analysis-name: << parameters.analysis-name >>
+            analysis-results-path: << parameters.analysis-results-path >>
+            vcs-api-token: << parameters.vcs-api-token >>

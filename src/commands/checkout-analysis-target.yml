@@ -1,0 +1,72 @@
+description: Check out the source code to be analyzed
+parameters:
+  path:
+    description: "Checkout directory (default: job’s working_directory)"
+    type: string
+    default: ""
+  is-target-branch-base:
+    description: Check-out the BASE branch if true is specified
+    type: boolean
+    default: false
+  has-reconstructed:
+    description: Specify true if `compare-url/reconstruct` has not been executed yet
+    type: boolean
+    default: false
+  attach-compare-url-workspace:
+    description: "Attach a workspace for this command to use? Useful when `compare-url` orb's `reconstruct` job is called upstream in a given workflow"
+    type: boolean
+    default: false
+  vcs-api-token:
+    description: Specify the environment variable name where the VCS (Version Control System) API token is set.
+    type: env_var_name
+    default: GITHUB_TOKEN
+steps:
+  - when:
+      condition: << parameters.path >>
+      steps:
+        - checkout:
+            path: << parameters.path >>
+  - unless:
+      condition: << parameters.path >>
+      steps:
+        - checkout
+  - when:
+      condition: << parameters.is-target-branch-base >>
+      steps:
+        - unless:
+            condition: << parameters.has-reconstructed >> 
+            steps:
+              - when:
+                  condition: << parameters.path >>
+                  steps:
+                    - compare-url/reconstruct:
+                        debug: true
+                        project-path: << parameters.path >>
+              - unless:
+                  condition: << parameters.path >>
+                  steps:
+                    - compare-url/reconstruct:
+                        debug: true
+                        project-path: '`eval echo $CIRCLE_WORKING_DIRECTORY`'
+        - run:
+            name: Change BASE if it is a pull request
+            command: |
+                set -x
+
+                if [ -v CIRCLE_PULL_REQUEST ]
+                then
+                  if echo "$CIRCLE_PULL_REQUEST" | grep '^https://github.com/'
+                  then
+                    sudo apt-get install jq
+                    PULL_REQUEST_PATH="${CIRCLE_PULL_REQUEST#https://github.com/}"
+                    URL="https://api.github.com/repos/${PULL_REQUEST_PATH/pull/pulls}"
+                    curl -SsfLH "Authorization: token ${<< parameters.vcs-api-token >>}" "${URL}" | jq -rM '.base.sha' > BASE_COMPARE_COMMIT.txt
+                  else
+                    echo "sorry. Only GitHub is supported."
+                  fi
+                fi
+        - compare-url/use:
+            attach-workspace: << parameters.attach-compare-url-workspace >>
+            workspace-root: << parameters.path >>
+            step-name: Checkout BASE code
+            custom-logic: set +e; git checkout $(cat BASE_COMPARE_COMMIT.txt) || git checkout HEAD^

@@ -1,0 +1,30 @@
+description: Set the save destination of the analysis result in the RESULTS_PATH environment variable
+parameters:
+  analysis-name:
+    description: Analysis name
+    type: string
+    default: "true"
+  analysis-results-path:
+    description: Specify the path to save the analysis results if you need to change it
+    type: string
+    default: "/tmp/analysis-results"
+  is-target-branch-base:
+    description: Check-out the BASE branch if true is specified
+    type: boolean
+    default: false
+steps:
+  - run:
+      name: export RESULT_PATH
+      environment:
+        RESULTS_DIR: << parameters.analysis-results-path >>/<< parameters.analysis-name >>
+      command: |
+          set -x
+
+          mkdir -p "${RESULTS_DIR}"
+
+          if << parameters.is-target-branch-base >>
+          then RESULT_FILENAME_PREFIX=BASE
+          else RESULT_FILENAME_PREFIX=HEAD
+          fi
+
+          echo "export RESULT_PATH=\"${RESULTS_DIR}/${RESULT_FILENAME_PREFIX}-analysis-results.xml\"" >> $BASH_ENV

@@ -1,0 +1,61 @@
+description: alculate the difference of static code analysis results between HEAD branch and BASE branch
+parameters:
+  has-reconstructed:
+    description: Specify true if `compare-url/reconstruct` has not been executed yet
+    type: boolean
+    default: false
+  attach-compare-url-workspace:
+    description: "Attach a workspace for this command to use? Useful when `compare-url` orb's `reconstruct` job is called upstream in a given workflow"
+    type: boolean
+    default: false
+  analyze:
+    description: Specify analysis steps
+    type: steps
+    default:
+      - analyze
+  analysis-name:
+    description: Analysis name
+    type: string
+    default: "true"
+  analysis-results-path:
+    description: Specify the path to save the analysis results if you need to change it
+    type: string
+    default: "/tmp/analysis-results"
+  calculate:
+    description: Specify the steps for calculating the difference
+    type: steps
+    default:
+      - calculate
+  project-path:
+    description: "Absolute path to your project's base directory, necessary for running git commands (default: job’s working_directory)"
+    type: string
+    default: ""
+  vcs-api-token:
+    description: Specify the environment variable name where the VCS (Version Control System) API token is set.
+    type: env_var_name
+    default: GITHUB_TOKEN
+steps:
+  # steps to analyze HEAD
+  - checkout-analysis-target:
+      path: << parameters.project-path >>
+  - set-result-path:
+      analysis-name: << parameters.analysis-name >>
+      analysis-results-path: << parameters.analysis-results-path >>
+  - steps: << parameters.analyze >>
+  # steps analyze BASE
+  - checkout-analysis-target:
+      path: << parameters.project-path >>
+      is-target-branch-base: true
+      has-reconstructed: << parameters.has-reconstructed >>
+      attach-compare-url-workspace: << parameters.attach-compare-url-workspace >>
+      vcs-api-token: << parameters.vcs-api-token >>
+  - set-result-path:
+      analysis-name: << parameters.analysis-name >>
+      analysis-results-path: << parameters.analysis-results-path >>
+      is-target-branch-base: true
+  - steps: << parameters.analyze >>
+  # steps to calculate the difference
+  - set-analysis-result-paths:
+      analysis-name: << parameters.analysis-name >>
+      analysis-results-path: << parameters.analysis-results-path >>
+  - steps: << parameters.calculate >>

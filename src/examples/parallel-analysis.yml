@@ -1,0 +1,49 @@
+description: Execute HEAD and BASE analysis jobs in parallel and calculate the difference by using the results of each in subsequent jobs
+usage:
+  version: 2.1
+  orbs:
+    dscar: naokikimura/dscar@0.6.0
+  workflows:
+    analyze-code-statically:
+      jobs:
+        - dscar/analyze: &analyze
+            name: analyze head using eslint
+            analysis-name: ESLint
+            has-reconstructed: true
+            executor:
+              name: dscar/default
+              docker-image: circleci/node:10.16.0
+            pre-steps:
+              - attach_workspace:
+                  at: .
+              - run: npm install
+            analysis-results-path: /tmp/workspace/analysis-results
+            test-results-path: ""
+            analyze:
+              - dscar/analyze:
+                  prepare: []
+                  starting-points: 'client/src/**/*.@(ts|tsx)'
+                  analysis-command: npx
+                  analysis-arguments: eslint --ext .js,.jsx,.ts,.tsx -f checkstyle
+            post-steps:
+              - store_artifacts:
+                  path: /tmp/analysis-results
+              - persist_to_workspace:
+                  root: /tmp/workspace
+                  paths:
+                    - analysis-results
+            requires:
+              - checkout
+        - dscar/analyze:
+            <<: *analyze
+            name: analyze base using eslint
+            is-target-branch-base: true
+        - dscar/calculate:
+            analysis-name: ESLint
+            analysis-results-path: /tmp/workspace/analysis-results
+            pre-steps:
+              - attach_workspace:
+                  at: /tmp/workspace
+            requires:
+              - analyze head using eslint
+              - analyze base using eslint

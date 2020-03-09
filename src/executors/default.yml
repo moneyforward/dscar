@@ -1,0 +1,13 @@
+description: Default analysis execution environment
+parameters:
+  docker-image:
+    description: Specify the image used to execute the analysis
+    type: string
+    default: circleci/node
+  resource_class:
+    description: Amount of CPU and RAM allocated to each container in a job.
+    type: string
+    default: small
+docker:
+  - image: << parameters.docker-image >>
+resource_class: << parameters.resource_class >>

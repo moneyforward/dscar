@@ -1,0 +1,99 @@
+description: transform Checkstyle to JUnit
+parameters:
+  analysis-name:
+    description: Analysis name
+    type: string
+    default: "true"
+  analysis-results-path:
+    description: Specify the path to save the analysis results if you need to change it
+    type: string
+    default: "/tmp/analysis-results"
+  test-results-path:
+    description: Specify the value of the path parameter in the store_test_results step if you need to change it
+    type: string
+    default: "/tmp/test-results"
+  pattern:
+    type: string
+    default: ".*"
+  when:
+    description: "Specify when to enable or disable the step. Takes the following values: always, on_success, on_fail (default: on_fail)"
+    type: enum
+    enum: [on_success, always, on_fail]
+    default: on_fail
+steps:
+  - run:
+      name: transform Checkstyle to JUnit
+      environment:
+          ANALYSIS_NAME: << parameters.analysis-name >>
+          ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
+          TEST_RESULTS_PATH: << parameters.test-results-path >>
+          PATTERN: << parameters.pattern >>
+      command: |
+          set -x
+
+          sudo apt-get install xmlstarlet
+
+          XSL_FILE=$(mktemp)
+          cat \<<-EOT > "$XSL_FILE"
+          <?xml version="1.0" encoding="UTF-8"?>
+          <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+            <xsl:output encoding="UTF-8" method="xml"></xsl:output>
+
+            <xsl:template match="/">
+              <testsuites>
+                <xsl:for-each select="//checkstyle">
+                  <xsl:apply-templates />
+                </xsl:for-each>
+              </testsuites>
+            </xsl:template>
+
+            <xsl:template match="file">
+              <testsuite id="#{generate-id(.)}" package="${ANALYSIS_NAME}" timestamp="`date '+%Y-%m-%dT%H:%M:%S'`" hostname="`hostname`" time="0">
+                <xsl:attribute name="name">
+                  <xsl:value-of select="@name" />
+                </xsl:attribute>
+                <xsl:attribute name="tests">
+                  <xsl:value-of select="count(error)" />
+                </xsl:attribute>
+                <xsl:attribute name="failures">
+                  <xsl:value-of select="count(error)" />
+                </xsl:attribute>
+                <xsl:attribute name="errors">
+                  <xsl:value-of select="count(exception)" />
+                </xsl:attribute>
+                <properties />
+                <system-out />
+                <system-err />
+                <xsl:apply-templates select="node()" />
+              </testsuite>
+            </xsl:template>
+
+            <xsl:template match="error">
+              <testcase name="#{@source}" classname="${ANALYSIS_NAME}" time="0">
+                <failure type="#{@severity}">
+                  <xsl:text>[</xsl:text>
+                  <xsl:value-of select="@severity" />
+                  <xsl:text>] </xsl:text>
+                  <xsl:value-of select="@message" />
+                  <xsl:text> - </xsl:text>
+                  <xsl:value-of select="@line" />
+                  <xsl:text> line, </xsl:text>
+                  <xsl:value-of select="number(@column)" />
+                  <xsl:text> column in </xsl:text>
+                  <xsl:value-of select="../@name" />
+                </failure>
+              </testcase>
+            </xsl:template>
+          </xsl:stylesheet>
+          EOT
+
+          ANALYSIS_RESULTS_PATH="${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}/${ANALYSIS_NAME:-true}"
+          TEST_RESULTS_PATH="${TEST_RESULTS_PATH:-/tmp/test-results}/${ANALYSIS_NAME:-true}"
+
+          find "$ANALYSIS_RESULTS_PATH" -type f -regex "$PATTERN" -printf '%P\n' |
+          while read -r RESULT_PATH
+          do
+            mkdir -p "${TEST_RESULTS_PATH}/`dirname $RESULT_PATH`"
+            xmlstarlet tr "$XSL_FILE" < "${ANALYSIS_RESULTS_PATH}/${RESULT_PATH}" > "${TEST_RESULTS_PATH}/${RESULT_PATH}"
+          done
+      when: << parameters.when >>

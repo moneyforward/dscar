@@ -1,0 +1,20 @@
+description: Calculate Brakeman's analysis results for update difference between HEAD branch and BASE branch
+usage:
+  version: 2.1
+  orbs:
+    dscar: naokikimura/dscar@0.6.0
+  workflows:
+    analyze-code-statically:
+      jobs:
+        - dscar/execute:
+            name: reek
+            executor:
+              name: dscar/default
+              docker-image: circleci/ruby
+            pre-steps:
+              - run: sudo gem install reek
+            analysis-name: Reek
+            analyze:
+              - dscar/analyze:
+                  analysis-command: reek
+                  analysis-arguments: -f xml

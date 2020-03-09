@@ -1,0 +1,66 @@
+description: Add a review comment about the analysis result to the pull request
+parameters:
+  analysis-name:
+    description: Analysis name
+    type: string
+    default: "true"
+  analysis-results-path:
+    description: Specify the path to save the analysis results if you need to change it
+    type: string
+    default: "/tmp/analysis-results"
+  pattern:
+    type: string
+    default: ".*"
+  vcs-api-token:
+    description: Specify the environment variable name where the VCS (Version Control System) API token is set.
+    type: env_var_name
+    default: GITHUB_TOKEN
+  when:
+    description: "Specify when to enable or disable the step. Takes the following values: always, on_success, on_fail (default: on_fail)"
+    type: enum
+    enum: [on_success, always, on_fail]
+    default: on_fail
+steps:
+  - run:
+      name: Add a review comment to the pull request
+      environment:
+          ANALYSIS_NAME: << parameters.analysis-name >>
+          ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
+          PATTERN: << parameters.pattern >>
+      command: |
+          set -x
+
+          if [ -v CIRCLE_PULL_REQUEST ]
+          then
+            if echo "$CIRCLE_PULL_REQUEST" | grep '^https://github.com/'
+            then
+              sudo apt-get install xmlstarlet jq
+
+              PULL_REQUEST_PATH="${CIRCLE_PULL_REQUEST#https://github.com/}"
+              URL="https://api.github.com/repos/${PULL_REQUEST_PATH/pull/pulls}/comments"
+
+              find "${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}/${ANALYSIS_NAME:-true}" -type f -regex "$PATTERN" |
+              while read -r RESULT_PATH
+              do
+                {
+                  xmlstarlet sel -t -m '//error' -o "${CIRCLE_SHA1}" -o $'\t' -v "substring-after(../@name,'${PWD}')" -o $'\t' -v '@line' -o $'\t' -e 'p' -o "[${ANALYSIS_NAME}] " -v '@message' -e 'details' -o 'Rule: "' -v '@source' -o '"; severity: "' -v '@severity' -o '";' -e 'p' -v '@line' -o ' line, ' -v 'number(@column)' -o ' column in ' -v "substring-after(../@name,'${PWD}')" -n |
+                  while read -r LINE
+                  do
+                    echo "$LINE" |
+                    jq -cMR 'split("\t")|{commit_id:.[0],path:.[1],line:.[2]|tonumber,side:"RIGHT",body:.[3]}' |
+                    tee /dev/stderr |
+                    curl -SsL -H "Authorization: token ${<< parameters.vcs-api-token >>}" -H "Content-Type: application/json" --data-binary @- "${URL}"
+                  done
+                } < "$RESULT_PATH"
+                {
+                  xmlstarlet sel -t -v 'count(//error)' -n |
+                  jq '{body:"@'$CIRCLE_USERNAME' \n :warning: '$ANALYSIS_NAME' pointed out \(.) issues. \n See '$CIRCLE_BUILD_URL'#tests"}' |
+                  tee /dev/stderr |
+                  curl -SsfL -H "Authorization: token ${<< parameters.vcs-api-token >>}" -H "Content-Type: application/json" --data-binary @- "${URL/pulls/issues}"
+                } < "$RESULT_PATH"
+              done
+            else
+              echo "sorry. Only GitHub is supported."
+            fi
+          fi
+      when: << parameters.when >>

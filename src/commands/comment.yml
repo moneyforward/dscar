@@ -30,34 +30,80 @@ steps:
       command: |
           set -x
 
+          XSL=$(mktemp)
+          cat \<<-"EOT" > "$XSL"
+          <?xml version="1.0"?>
+          <xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:exslt="http://exslt.org/common" version="1.0" extension-element-prefixes="exslt">
+            <xsl:output method="html" omit-xml-declaration="yes" indent="no"/>
+            <xsl:param name="analyzer" select="true" />
+            <xsl:param name="path" select="''" />
+            <xsl:param name="username" select="''" />
+            <xsl:template match="//error">
+              <article>
+                @<xsl:value-of select="$username" />
+                <p><b>[<xsl:value-of select="$analyzer" />]</b><xsl:text> </xsl:text><span><xsl:value-of select="@message" /></span></p>
+                <details>
+                  <p><xsl:value-of select="." /></p>
+                  <p><xsl:value-of select="number(@line)" /> line , <xsl:value-of select="number(@column)" /> column in <code><xsl:value-of select="$path" /></code></p>
+                  <dl>
+                    <dt>Rule</dt><dd><xsl:value-of select="@source" /></dd>
+                    <dt>Severity</dt><dd><xsl:value-of select="@severity" /></dd>
+                  </dl>
+                </details>
+              </article>
+            </xsl:template>
+          </xsl:stylesheet>
+          EOT
+
           if [ -v CIRCLE_PULL_REQUEST ]
           then
             if echo "$CIRCLE_PULL_REQUEST" | grep '^https://github.com/'
             then
               sudo apt-get install xmlstarlet jq
 
-              PULL_REQUEST_PATH="${CIRCLE_PULL_REQUEST#https://github.com/}"
-              URL="https://api.github.com/repos/${PULL_REQUEST_PATH/pull/pulls}/comments"
+              PR_PATH="${CIRCLE_PULL_REQUEST#https://github.com/}"
+              PR_URL="https://api.github.com/repos/${PR_PATH/pull/pulls}"
+              REVIEW_COMMENT_URL="${PR_URL}/comments"
+              PR_COMMENT_URL="${PR_URL/pulls/issues}/comments"
 
               find "${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}/${ANALYSIS_NAME:-true}" -type f -regex "$PATTERN" |
               while read -r RESULT_PATH
               do
                 {
-                  xmlstarlet sel -B -t -m '//error' -o "${CIRCLE_SHA1}" -o $'\t' -v '../@name' -o $'\t' -v '@line' -o $'\t' -e 'p' -o "[${ANALYSIS_NAME}] " -v '@message' -e 'details' -o 'Rule: "' -v '@source' -o '"; severity: "' -v '@severity' -o '";' -e 'p' -v '@line' -o ' line, ' -v 'number(@column)' -o ' column in ' -v '../@name' -b -b -b -n |
-                  while read -r LINE
+                  xmlstarlet sel -t -m '//error' -e comment -a file -v '../@name' -b -c '.' -b -n |
+                  while read -r COMMENT
                   do
-                    echo "$LINE" |
-                    sed -e "s/${PWD//\//\\/}\///" |
-                    jq -cMR 'split("\t")|{commit_id:.[0],path:.[1],line:.[2]|tonumber,side:"RIGHT",body:.[3]}' |
+                    FILE=$(echo "$COMMENT" | xmlstarlet sel -t -m '/comment' -v '@file')
+                    REAL_PATH=$(realpath "$FILE")
+                    RELATIVE_PATH="${REAL_PATH#${PWD}/}"
+
+                    LINE="$(echo "$COMMENT" | xmlstarlet sel -t -m '//error' -v '@line')"
+
+                    if [ ${LINE:--1} -gt 0 ]
+                    then COMMENT_URL="${REVIEW_COMMENT_URL}"
+                    else COMMENT_URL="${PR_COMMENT_URL}"
+                    fi
+
+                    echo "${COMMENT}" |
+                    xmlstarlet tr "$XSL" -s "analyzer=${ANALYSIS_NAME}" -s "path=${RELATIVE_PATH}" -s "username=${CIRCLE_USERNAME}" |
+                    jq -scMR \
+                      --arg 'commit_id' "${CIRCLE_SHA1}" \
+                      --arg 'path' "${RELATIVE_PATH}" \
+                      --arg 'line' "${LINE}" \
+                      '{ line: $line|tonumber, side: "RIGHT", commit_id: $commit_id, path: $path, body: . }' |
                     tee /dev/stderr |
-                    curl -SsL -H "Authorization: token ${<< parameters.vcs-api-token >>}" -H "Content-Type: application/json" --data-binary @- "${URL}"
+                    curl -SsL -H "Authorization: token ${<< parameters.vcs-api-token >>}" -H 'Accept: application/vnd.github.comfort-fade-preview+json' -H "Content-Type: application/json" --data-binary @- "${COMMENT_URL}"
                   done
                 } < "$RESULT_PATH"
                 {
                   xmlstarlet sel -t -v 'count(//error)' -n |
-                  jq '{body:"@'$CIRCLE_USERNAME' \n :warning: '$ANALYSIS_NAME' pointed out \(.) issues. \n See '$CIRCLE_BUILD_URL'#tests"}' |
+                  jq -cM \
+                    --arg 'username' "${CIRCLE_USERNAME}" \
+                    --arg 'analyzer' "${ANALYSIS_NAME}" \
+                    --arg 'build_url' "${CIRCLE_BUILD_URL}" \
+                    '{ body: "@\($username) \n :warning: \($analyzer) pointed out \(.) issues. \n See \($build_url)#tests"}' |
                   tee /dev/stderr |
-                  curl -SsfL -H "Authorization: token ${<< parameters.vcs-api-token >>}" -H "Content-Type: application/json" --data-binary @- "${URL/pulls/issues}"
+                  curl -SsfL -H "Authorization: token ${<< parameters.vcs-api-token >>}" -H "Content-Type: application/json" --data-binary @- "${PR_COMMENT_URL}"
                 } < "$RESULT_PATH"
               done
             else

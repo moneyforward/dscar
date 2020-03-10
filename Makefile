@@ -27,3 +27,7 @@ info:
 .PHONY: process
 process: dist/orb.yml
 	circleci orb process $(ORB_YAML_PATH)
+
+.PHONY: create
+create:
+	circleci orb create $(ORB)

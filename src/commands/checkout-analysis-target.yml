@@ -1,4 +1,22 @@
-description: Check out the source code to be analyzed
+description: |
+  Check out the source code to be analyzed
+
+  This command identifies the BASE commit in the following steps:
+
+  1. If there is a pull request associated with the current build, use the VCS API to identify the BASE commit.
+  2. If the `CIRCLE_COMPARE_URL` environment variable is set, the value identifies the BASE commit.
+    - If `CIRCLE_COMPARE_URL.txt` exists even if the `CIRCLE_COMPARE_URL` environment variable is not set, the contents of that file will be used as the value of `CIRCLE_COMPARE_URL`.
+  3. If not identified, assume that the BASE commit is `HEAD^`.
+
+  Note: CircleCI 2.1 will disable the `CIRCLE_COMPARE_URL` environment variable. Please reconfigure `CIRCLE_COMPARE_URL` somehow.
+
+  There are several ways to reconfigure the `CIRCLE_COMPARE_URL` environment variable:
+
+  - Use [iynere/compare-url][1] orb
+  - Use [Pipeline Values][2]
+
+  [1]: https://circleci.com/orbs/registry/orb/iynere/compare-url
+  [2]: https://circleci.com/docs/2.0/pipeline-variables/#pipeline-values
 parameters:
   path:
     description: "Checkout directory (default: job’s working_directory)"
@@ -8,14 +26,10 @@ parameters:
     description: Check-out the BASE branch if true is specified
     type: boolean
     default: false
-  has-reconstructed:
-    description: Specify true if `compare-url/reconstruct` has not been executed yet
-    type: boolean
-    default: false
-  attach-compare-url-workspace:
-    description: "Attach a workspace for this command to use? Useful when `compare-url` orb's `reconstruct` job is called upstream in a given workflow"
-    type: boolean
-    default: false
+  circle_compare_url-path:
+    description: "Specify the path of `CIRCLE_COMPARE_URL.txt` if you are using `iynere/compare-url` orb"
+    type: string
+    default: ""
   vcs-api-token:
     description: Specify the environment variable name where the VCS (Version Control System) API token is set.
     type: env_var_name
@@ -33,40 +47,29 @@ steps:
   - when:
       condition: << parameters.is-target-branch-base >>
       steps:
-        - unless:
-            condition: << parameters.has-reconstructed >> 
-            steps:
-              - when:
-                  condition: << parameters.path >>
-                  steps:
-                    - compare-url/reconstruct:
-                        debug: true
-                        project-path: << parameters.path >>
-              - unless:
-                  condition: << parameters.path >>
-                  steps:
-                    - compare-url/reconstruct:
-                        debug: true
-                        project-path: '`eval echo $CIRCLE_WORKING_DIRECTORY`'
         - run:
-            name: Change BASE if it is a pull request
+            name: git checkout BASE
+            environment:
+              CIRCLE_COMPARE_URL_PATH: << parameters.circle_compare_url-path >>
             command: |
                 set -x
 
-                if [ -v CIRCLE_PULL_REQUEST ]
+                if [ -v CIRCLE_PULL_REQUEST -a -n "${CIRCLE_PULL_REQUEST}" ]
                 then
                   if echo "$CIRCLE_PULL_REQUEST" | grep '^https://github.com/'
                   then
                     sudo apt-get install jq
                     PULL_REQUEST_PATH="${CIRCLE_PULL_REQUEST#https://github.com/}"
-                    URL="https://api.github.com/repos/${PULL_REQUEST_PATH/pull/pulls}"
-                    curl -SsfLH "Authorization: token ${<< parameters.vcs-api-token >>}" "${URL}" | jq -rM '.base.sha' > BASE_COMPARE_COMMIT.txt
+                    PR_URL="https://api.github.com/repos/${PULL_REQUEST_PATH/pull/pulls}"
+                    BASE=$(curl -SsfLH "Authorization: token ${<< parameters.vcs-api-token >>}" "${PR_URL}" | jq -rM '.base.sha')
                   else
                     echo "sorry. Only GitHub is supported."
                   fi
+                else
+                  if [ ! -v CIRCLE_COMPARE_URL -o -z "${CIRCLE_COMPARE_URL}" ] && [ -e "${CIRCLE_COMPARE_URL_PATH}" ]
+                  then CIRCLE_COMPARE_URL=$(cat "${CIRCLE_COMPARE_URL_PATH}")
+                  fi
+                  BASE=$(echo "${CIRCLE_COMPARE_URL}" | grep -E '/compare/([0-9a-f]{7,40})[.]{2,}[0-9a-f]{7,40}$' | sed -re 's/^.*\/compare\/([0-9a-f]{7,40})[.]{2,}[0-9a-f]{7,40}$/\1/')
                 fi
-        - compare-url/use:
-            attach-workspace: << parameters.attach-compare-url-workspace >>
-            workspace-root: << parameters.path >>
-            step-name: Checkout BASE code
-            custom-logic: set +e; git checkout $(cat BASE_COMPARE_COMMIT.txt) || git checkout HEAD^
+
+                git checkout "${BASE:-HEAD^}" || git checkout HEAD^

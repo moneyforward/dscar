@@ -1,13 +1,5 @@
 description: Calculate the difference of static code analysis results between HEAD branch and BASE branch and then evaluate the result
 parameters:
-  has-reconstructed:
-    description: Specify true if `compare-url/reconstruct` has not been executed yet
-    type: boolean
-    default: false
-  attach-compare-url-workspace:
-    description: "Attach a workspace for this command to use? Useful when `compare-url` orb's `reconstruct` job is called upstream in a given workflow"
-    type: boolean
-    default: false
   analysis-name:
     description: Analysis name
     type: string
@@ -34,15 +26,18 @@ parameters:
     description: Specify the environment variable name where the VCS (Version Control System) API token is set.
     type: env_var_name
     default: GITHUB_TOKEN
+  circle_compare_url-path:
+    description: "Specify the path of `CIRCLE_COMPARE_URL.txt` if you are using `iynere/compare-url` orb"
+    type: string
+    default: ""
 steps:
   - execute:
-      has-reconstructed: << parameters.has-reconstructed >>
-      attach-compare-url-workspace: << parameters.attach-compare-url-workspace >>
       analysis-name: << parameters.analysis-name >>
       analyze: << parameters.analyze >>
       analysis-results-path: << parameters.analysis-results-path >>
       calculate: << parameters.calculate >>
       vcs-api-token: << parameters.vcs-api-token >>
+      circle_compare_url-path: << parameters.circle_compare_url-path >>
   - evaluate:
       analysis-name: << parameters.analysis-name >>
       analysis-results-path: << parameters.analysis-results-path >>

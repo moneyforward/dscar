@@ -8,7 +8,7 @@ parameters:
   executor:
     description: Specify the image used to execute analysis
     type: executor
-    default: default
+    default: calculator
   analysis-name:
     description: Analysis name
     type: string

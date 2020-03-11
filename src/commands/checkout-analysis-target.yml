@@ -69,7 +69,7 @@ steps:
                   if [ ! -v CIRCLE_COMPARE_URL -o -z "${CIRCLE_COMPARE_URL}" ] && [ -e "${CIRCLE_COMPARE_URL_PATH}" ]
                   then CIRCLE_COMPARE_URL=$(cat "${CIRCLE_COMPARE_URL_PATH}")
                   fi
-                  BASE=$(echo "${CIRCLE_COMPARE_URL}" | grep -E '/compare/([0-9a-f]{7,40})[.]{2,}[0-9a-f]{7,40}$' | sed -re 's/^.*\/compare\/([0-9a-f]{7,40})[.]{2,}[0-9a-f]{7,40}$/\1/')
+                  BASE=$(echo "${CIRCLE_COMPARE_URL}" | ( set +e; grep -E '/compare/([0-9a-f]{7,40})[.]{2,}[0-9a-f]{7,40}$' ; : ) | sed -re 's/^.*\/compare\/([0-9a-f]{7,40})[.]{2,}[0-9a-f]{7,40}$/\1/')
                 fi
 
                 git checkout "${BASE:-HEAD^}" || git checkout HEAD^

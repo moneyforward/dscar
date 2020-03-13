@@ -1,0 +1,41 @@
+description: |
+  Combine the analysis results
+
+  Use the [checkstyle-reports-combiner][1] command to combine
+
+  [1]: https://www.npmjs.com/package/junit-reports-combiner
+parameters:
+  analysis-results-path:
+    description: Specify the path to save the analysis results if you need to change it
+    type: string
+    default: "/tmp/analysis-results"
+  should-install-node_js:
+    description: Specify true if the execution environment does not have Node.js installed
+    type: boolean
+    default: false
+steps:
+  - when:
+      condition: << parameters.should-install-node_js >>
+      steps:
+        - node/install
+  - run: sudo npm install --global junit-reports-combiner
+  - run:
+      name: combine
+      environment:
+        ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
+        COMMAND: checkstyle-reports-combiner
+      command: |
+        set -x
+
+        find "${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}" -maxdepth 1 -mindepth 1 -type d |
+        while read -r DIR
+        do
+          ANALYSIS_NAME="$(basename "$DIR")"
+          mkdir -p "${DIR}/@"
+          for PREFIX in HEAD BASE
+          do
+            RESULT_PATH="${DIR}/@/${CIRCLE_NODE_INDEX}-${PREFIX}-analysis-result.xml"
+            find "$DIR" -type f -regextype posix-extended -regex ".*/[0-9]+/${PREFIX}-analysis-result\.xml" -print0 |
+            xargs -t0 "$COMMAND" <(echo '<checkstyle/>') | tee "$RESULT_PATH"
+          done
+        done

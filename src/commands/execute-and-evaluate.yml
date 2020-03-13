@@ -1,4 +1,7 @@
-description: Calculate the difference of static code analysis results between HEAD branch and BASE branch and then evaluate the result
+description: |
+  Calculate the difference of static code analysis results between HEAD branch and BASE branch and then evaluate the result
+
+  Note: If parallelism is set to N > 1, the result will not be calculated correctly in most cases.
 parameters:
   analysis-name:
     description: Analysis name
@@ -31,26 +34,36 @@ parameters:
     type: string
     default: ""
 steps:
-  - execute:
+  # steps to analyze HEAD
+  - set-result-path:
       analysis-name: << parameters.analysis-name >>
-      analyze: << parameters.analyze >>
       analysis-results-path: << parameters.analysis-results-path >>
-      calculate: << parameters.calculate >>
+  - checkout-analysis-target
+  - steps: << parameters.analyze >>
+  # steps analyze BASE
+  - set-result-path:
+      analysis-name: << parameters.analysis-name >>
+      analysis-results-path: << parameters.analysis-results-path >>
+      is-target-branch-base: true
+  - checkout-analysis-target:
+      is-target-branch-base: true
       vcs-api-token: << parameters.vcs-api-token >>
       circle_compare_url-path: << parameters.circle_compare_url-path >>
-  - evaluate:
-      analysis-name: << parameters.analysis-name >>
+  - steps: << parameters.analyze >>
+  # steps to calculate the difference
+  - set-analysis-result-paths:
       analysis-results-path: << parameters.analysis-results-path >>
-      pattern: '.*/DELTA-analysis-results\.xml$'
+  - steps: << parameters.calculate >>
+  - evaluate:
+      analysis-results-path: << parameters.analysis-results-path >>
+      pattern: '.*/([0-9]+-|)DELTA-analysis-result\.xml$'
   - transform:
-      analysis-name: << parameters.analysis-name >>
       analysis-results-path: << parameters.analysis-results-path >>
       test-results-path: << parameters.test-results-path >>
-      pattern: '.*/DELTA-analysis-results\.xml$'
+      pattern: '.*/([0-9]+-|)DELTA-analysis-result\.xml$'
   - store_test_results:
       path: << parameters.test-results-path >>
   - comment:
-      analysis-name: << parameters.analysis-name >>
       analysis-results-path: << parameters.analysis-results-path >>
-      pattern: '.*/DELTA-analysis-results\.xml$'
+      pattern: '.*/([0-9]+-|)DELTA-analysis-result\.xml$'
       vcs-api-token: << parameters.vcs-api-token >>

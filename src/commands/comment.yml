@@ -1,9 +1,5 @@
 description: Add a review comment about the analysis result to the pull request
 parameters:
-  analysis-name:
-    description: Analysis name
-    type: string
-    default: "true"
   analysis-results-path:
     description: Specify the path to save the analysis results if you need to change it
     type: string
@@ -24,7 +20,6 @@ steps:
   - run:
       name: Add a review comment to the pull request
       environment:
-          ANALYSIS_NAME: << parameters.analysis-name >>
           ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
           PATTERN: << parameters.pattern >>
       command: |
@@ -66,10 +61,11 @@ steps:
               REVIEW_COMMENT_URL="${PR_URL}/comments"
               PR_COMMENT_URL="${PR_URL/pulls/issues}/comments"
 
-              find "${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}/${ANALYSIS_NAME:-true}" -type f -regex "$PATTERN" |
+              find "${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}" -type f -regextype posix-extended -regex "$PATTERN" |
               while read -r RESULT_PATH
               do
                 {
+                  ANALYSIS_NAME=$(echo "${RESULT_PATH#${ANALYSIS_RESULTS_PATH}/}" | sed -re 's/^([^\/]*)\/.*$/\1/')
                   xmlstarlet sel -t -m '//error' -e comment -a file -v '../@name' -b -c '.' -b -n |
                   while read -r COMMENT
                   do

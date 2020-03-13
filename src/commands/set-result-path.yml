@@ -16,10 +16,12 @@ steps:
   - run:
       name: export RESULT_PATH
       environment:
-        RESULTS_DIR: << parameters.analysis-results-path >>/<< parameters.analysis-name >>
+        ANALYSIS_NAME: << parameters.analysis-name >>
+        ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
       command: |
           set -x
 
+          RESULTS_DIR="${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}/${ANALYSIS_NAME:-true}/${CIRCLE_NODE_INDEX}"
           mkdir -p "${RESULTS_DIR}"
 
           if << parameters.is-target-branch-base >>
@@ -27,4 +29,4 @@ steps:
           else RESULT_FILENAME_PREFIX=HEAD
           fi
 
-          echo "export RESULT_PATH=\"${RESULTS_DIR}/${RESULT_FILENAME_PREFIX}-analysis-results.xml\"" >> $BASH_ENV
+          echo "export RESULT_PATH=\"${RESULTS_DIR}/${RESULT_FILENAME_PREFIX}-analysis-result.xml\"" >> $BASH_ENV

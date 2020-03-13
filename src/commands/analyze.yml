@@ -107,13 +107,15 @@ steps:
               echo "$PATTERNS_TO_INCLUDE" | awk NF | while read -r pattern; do printf -- '-o -regex %q\n' "$pattern" || exit $? ; done
               echo ') '
               echo "$PATTERNS_TO_EXCLUDE" | awk NF | while read -r pattern; do printf '! -regex %q\n' "$pattern" || exit $? ; done
-              echo '-print0'
+              echo '-regextype "posix-extended" -print'
             } | xargs -t find
             else {
               echo "$STARTING_POINTS"
-            } | tr '\n' '\0'
+            }
             fi
           } |
+            circleci tests split --show-counts --split-by=filesize |
+            tr '\n' '\0' |
             xargs -0t "${ANALYSIS_COMMAND:-true}" "${ANALYSIS_ARGUMENTS[@]}" ${PARAM_ANALYSIS_ARGUMENTS} |
             cat \
               <("${HEADER_COMMAND:-true}" "${HEADER_ARGUMENTS[@]}" ${PARAM_HEADER_ARGUMENTS}) \

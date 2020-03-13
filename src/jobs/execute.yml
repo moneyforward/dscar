@@ -4,6 +4,10 @@ parameters:
     description: Specify the image used to execute analysis
     type: executor
     default: default
+  resource_class:
+    description: Amount of CPU and RAM allocated to each container in a job.
+    type: string
+    default: small
   analysis-name:
     description: Analysis name
     type: string
@@ -35,6 +39,8 @@ parameters:
     type: string
     default: ""
 executor: << parameters.executor >>
+resource_class: << parameters.resource_class >>
+parallelism: 1
 steps:
   - execute-and-evaluate:
       analysis-name: << parameters.analysis-name >>

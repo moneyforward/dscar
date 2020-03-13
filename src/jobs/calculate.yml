@@ -9,10 +9,14 @@ parameters:
     description: Specify the image used to execute analysis
     type: executor
     default: calculator
-  analysis-name:
-    description: Analysis name
+  resource_class:
+    description: Amount of CPU and RAM allocated to each container in a job.
     type: string
-    default: "true"
+    default: small
+  parallelism:
+    description: If parallelism is set to N > 1, then N independent executors will be set up and each will run the steps of that job in parallel.
+    type: integer
+    default: 1
   calculate:
     description: Specify the steps for calculating the difference
     type: steps
@@ -31,9 +35,10 @@ parameters:
     type: env_var_name
     default: GITHUB_TOKEN
 executor: << parameters.executor >>
+resource_class: << parameters.resource_class >>
+parallelism: << parameters.parallelism >>
 steps:
   - calculate-and-evaluate:
-      analysis-name: << parameters.analysis-name >>
       calculate: << parameters.calculate >>
       analysis-results-path: << parameters.analysis-results-path >>
       test-results-path: << parameters.test-results-path >>

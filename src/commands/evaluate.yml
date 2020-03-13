@@ -1,9 +1,5 @@
 description: Evaluate analysis results
 parameters:
-  analysis-name:
-    description: Analysis name
-    type: string
-    default: "true"
   analysis-results-path:
     description: Specify the path to save the analysis results if you need to change it
     type: string
@@ -15,7 +11,6 @@ steps:
   - run:
       name: Evaluate analysis results
       environment:
-          ANALYSIS_NAME: << parameters.analysis-name >>
           ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
           PATTERN: << parameters.pattern >>
           SELECTOR: //exception|//error
@@ -24,7 +19,7 @@ steps:
 
           sudo apt-get install xmlstarlet
 
-          find "${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}/${ANALYSIS_NAME:-true}" -type f -regex "$PATTERN" |
+          find "${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}" -type f -regextype posix-extended -regex "$PATTERN" |
           while read -r RESULT_PATH
           do
             ! xmlstarlet sel -t -m "$SELECTOR" -v '.' -n < "$RESULT_PATH" >/dev/null || exit $?

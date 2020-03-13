@@ -5,40 +5,64 @@ description: |
   - SECOND_RESULT_PATH
   - DELTA_RESULT_PATH
 parameters:
-  first-result-path:
-    description: Path of the file to use as the minuend
-    type: string
-    default: ""
-  second-result-path:
-    description: Path of the file to use as the subtrahend
-    type: string
-    default: ""
-  delta-result-path:
-    description: Path to save difference of analysis result
-    type: string
-    default: ""
-  analysis-name:
-    description: Analysis name
-    type: string
-    default: "true"
   analysis-results-path:
     description: Specify the path to save the analysis results if you need to change it
     type: string
     default: "/tmp/analysis-results"
+  has-aggregated:
+    description: Specify true if analysis results are aggregated
+    type: boolean
+    default: false
 steps:
   - run:
       name: export FIRST_RESULT_PATH SECOND_RESULT_PATH DELTA_RESULT_PATH
       environment:
-        FIRST_RESULT_PATH: << parameters.first-result-path >>
-        SECOND_RESULT_PATH: << parameters.second-result-path >>
-        DELTA_RESULT_PATH: << parameters.delta-result-path >>
-        ANALYSIS_NAME: << parameters.analysis-name >>
         ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
       command: |
-          ANALYSIS_RESULTS_DIR="${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}/${ANALYSIS_NAME:-true}"
-          mkdir -p "${ANALYSIS_RESULTS_DIR}"
+          set -x
+
+          FIRST_PATHS=()
+          SECOND_PATHS=()
+          DELTA_PATHS=()
+          while read -r DIR
+          do
+            mkdir -p "${DIR}"
+            if << parameters.has-aggregated >>
+            then RESULT_FILENAME_PREFIX="${CIRCLE_NODE_INDEX}-"
+            else RESULT_FILENAME_PREFIX=
+            fi
+            FIRST_PATHS+=( "${DIR}/${RESULT_FILENAME_PREFIX}HEAD-analysis-result.xml" )
+            SECOND_PATHS+=( "${DIR}/${RESULT_FILENAME_PREFIX}BASE-analysis-result.xml" )
+            DELTA_PATHS+=( "${DIR}/${RESULT_FILENAME_PREFIX}DELTA-analysis-result.xml" )
+          done < <(
+            if << parameters.has-aggregated >>
+            then
+              NODE_TOTAL=$CIRCLE_NODE_TOTAL
+              NODE_INDEX=$CIRCLE_NODE_INDEX
+              REGEX=".*/@/[0-9]+-(HEAD|BASE)-analysis-result\.xml"
+            else
+              NODE_TOTAL=1
+              NODE_INDEX=0
+              REGEX=".*/${CIRCLE_NODE_INDEX}/(HEAD|BASE)-analysis-result\.xml"
+            fi
+            ANALYSIS_RESULTS_DIR="${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}"
+            find "${ANALYSIS_RESULTS_DIR}" -type f -regextype posix-extended -regex "$REGEX" |
+            while read -r FILE ; do dirname "$FILE" ; done | sort | uniq |
+            circleci tests split --show-counts --index=$NODE_INDEX --total=$NODE_TOTAL
+          )
+
+          function tostring {
+            declare -n PATHS="$1"
+            echo "( "
+            for INDEX in $(seq 0 $(expr ${#PATHS[*]} - 1 ))
+            do
+              echo "'${PATHS[INDEX]}'"
+            done
+            echo " )"
+          }
+
           cat \<<-EOT >> $BASH_ENV
-          export FIRST_RESULT_PATH="${FIRST_RESULT_PATH:-${ANALYSIS_RESULTS_DIR}/HEAD-analysis-results.xml}"
-          export SECOND_RESULT_PATH="${SECOND_RESULT_PATH:-${ANALYSIS_RESULTS_DIR}/BASE-analysis-results.xml}"
-          export DELTA_RESULT_PATH="${DELTA_RESULT_PATH:-${ANALYSIS_RESULTS_DIR}/DELTA-analysis-results.xml}"
+          export FIRST_RESULT_PATH=$(tostring FIRST_PATHS)
+          export SECOND_RESULT_PATH=$(tostring SECOND_PATHS)
+          export DELTA_RESULT_PATH=$(tostring DELTA_PATHS)
           EOT

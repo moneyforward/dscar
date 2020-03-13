@@ -1,9 +1,5 @@
 description: transform Checkstyle to JUnit
 parameters:
-  analysis-name:
-    description: Analysis name
-    type: string
-    default: "true"
   analysis-results-path:
     description: Specify the path to save the analysis results if you need to change it
     type: string
@@ -24,7 +20,6 @@ steps:
   - run:
       name: transform Checkstyle to JUnit
       environment:
-          ANALYSIS_NAME: << parameters.analysis-name >>
           ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
           TEST_RESULTS_PATH: << parameters.test-results-path >>
           PATTERN: << parameters.pattern >>
@@ -38,6 +33,7 @@ steps:
           <?xml version="1.0" encoding="UTF-8"?>
           <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
             <xsl:output encoding="UTF-8" method="xml"></xsl:output>
+            <xsl:param name="analyzer" select="true" />
 
             <xsl:template match="/">
               <testsuites>
@@ -48,7 +44,7 @@ steps:
             </xsl:template>
 
             <xsl:template match="file">
-              <testsuite id="#{generate-id(.)}" package="${ANALYSIS_NAME}" timestamp="`date '+%Y-%m-%dT%H:%M:%S'`" hostname="`hostname`" time="0">
+              <testsuite id="#{generate-id(.)}" package="$analyzer" timestamp="`date '+%Y-%m-%dT%H:%M:%S'`" hostname="`hostname`" time="0">
                 <xsl:attribute name="name">
                   <xsl:value-of select="@name" />
                 </xsl:attribute>
@@ -69,7 +65,7 @@ steps:
             </xsl:template>
 
             <xsl:template match="error">
-              <testcase name="#{@source}" classname="${ANALYSIS_NAME}" time="0">
+              <testcase name="#{@source}" classname="$analyzer" time="0">
                 <failure type="#{@severity}">
                   <xsl:text>[</xsl:text>
                   <xsl:value-of select="@severity" />
@@ -87,13 +83,14 @@ steps:
           </xsl:stylesheet>
           EOT
 
-          ANALYSIS_RESULTS_PATH="${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}/${ANALYSIS_NAME:-true}"
-          TEST_RESULTS_PATH="${TEST_RESULTS_PATH:-/tmp/test-results}/${ANALYSIS_NAME:-true}"
+          ANALYSIS_RESULTS_PATH="${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}"
+          TEST_RESULTS_PATH="${TEST_RESULTS_PATH:-/tmp/test-results}"
 
-          find "$ANALYSIS_RESULTS_PATH" -type f -regex "$PATTERN" -printf '%P\n' |
+          find "$ANALYSIS_RESULTS_PATH" -type f -regextype posix-extended -regex "$PATTERN" -printf '%P\n' |
           while read -r RESULT_PATH
           do
+            ANALYSIS_NAME=$(echo "${RESULT_PATH#${ANALYSIS_RESULTS_PATH}/}" | sed -re 's/^([^\/]*)\/.*$/\1/')
             mkdir -p "${TEST_RESULTS_PATH}/`dirname $RESULT_PATH`"
-            xmlstarlet tr "$XSL_FILE" < "${ANALYSIS_RESULTS_PATH}/${RESULT_PATH}" > "${TEST_RESULTS_PATH}/${RESULT_PATH}"
+            xmlstarlet tr "$XSL_FILE" -s "analyzer=${ANALYSIS_NAME}" < "${ANALYSIS_RESULTS_PATH}/${RESULT_PATH}" > "${TEST_RESULTS_PATH}/${RESULT_PATH}"
           done
       when: << parameters.when >>

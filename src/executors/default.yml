@@ -4,10 +4,6 @@ parameters:
     description: Specify the image used to execute the analysis
     type: string
     default: circleci/node
-  resource_class:
-    description: Amount of CPU and RAM allocated to each container in a job.
-    type: string
-    default: small
   project-git_url:
     description: "Please set << pipeline.project.git_url >>"
     type: string
@@ -21,4 +17,3 @@ docker:
   - image: << parameters.docker-image >>
 environment:
   CIRCLE_COMPARE_URL: << parameters.project-git_url >>/compare/<< parameters.git-base_revision >>..<< parameters.git-revision >>
-resource_class: << parameters.resource_class >>

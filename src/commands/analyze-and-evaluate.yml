@@ -43,15 +43,12 @@ steps:
       condition: << parameters.test-results-path >>
       steps:
         - evaluate:
-            analysis-name: << parameters.analysis-name >>
             analysis-results-path: << parameters.analysis-results-path >>
         - transform:
-            analysis-name: << parameters.analysis-name >>
             analysis-results-path: << parameters.analysis-results-path >>
             test-results-path: << parameters.test-results-path >>
         - store_test_results:
             path: << parameters.test-results-path >>
         - comment:
-            analysis-name: << parameters.analysis-name >>
             analysis-results-path: << parameters.analysis-results-path >>
             vcs-api-token: << parameters.vcs-api-token >>

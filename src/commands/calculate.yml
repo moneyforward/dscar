@@ -12,15 +12,15 @@ parameters:
   first-result-path:
     description: Path of the file to use as the minuend
     type: string
-    default: "HEAD-analysis-results.xml"
+    default: "HEAD-analysis-result.xml"
   second-result-path:
     description: Path of the file to use as the subtrahend
     type: string
-    default: "BASE-analysis-results.xml"
+    default: "BASE-analysis-result.xml"
   delta-result-path:
     description: Path to save difference of analysis result
     type: string
-    default: "DELTA-analysis-results.xml"
+    default: "DELTA-analysis-result.xml"
   should-install-node_js:
     description: Specify true if the execution environment does not have Node.js installed
     type: boolean
@@ -30,21 +30,43 @@ steps:
       condition: << parameters.should-install-node_js >>
       steps:
         - node/install
+  - run: sudo npm install --global junit-reports-combiner
   - run:
       name: Calculate the difference
       environment:
           COMMAND: checkstyle-reports-combiner
-          OPTIONS: << parameters.options >>
+          OPTIONS: << parameters.options >> --operator=except
           PARAM_FIRST_RESULT_PATH: << parameters.first-result-path >>
           PARAM_SECOND_RESULT_PATH: << parameters.second-result-path >>
           PARAM_DELTA_RESULT_PATH: << parameters.delta-result-path >>
       command: |
           set -x
 
-          sudo npm install --global junit-reports-combiner
+          function isarray {
+            declare -p | grep -qE "^declare -a\S* $1"
+          }
 
-          TEMP_FILE=$(mktemp)
-          NODE_DEBUG="$COMMAND" "$COMMAND" $OPTIONS --operator=except \
-            "${FIRST_RESULT_PATH:-${PARAM_FIRST_RESULT_PATH:-HEAD-analysis-results.xml}}" \
-            "${SECOND_RESULT_PATH:-${PARAM_SECOND_RESULT_PATH:-BASE-analysis-results.xml}}" |
-            tee "$TEMP_FILE" "${DELTA_RESULT_PATH:-${PARAM_DELTA_RESULT_PATH:-/dev/null}}"
+          if isarray FIRST_RESULT_PATH
+          then declare -n FIRST_PATHS=FIRST_RESULT_PATH
+          else declare FIRST_PATHS="${FIRST_RESULT_PATH:-${PARAM_FIRST_RESULT_PATH:-HEAD-analysis-result.xml}}"
+          fi
+          if isarray SECOND_RESULT_PATH
+          then declare -n SECOND_PATHS=SECOND_RESULT_PATH
+          else declare SECOND_PATHS="${SECOND_RESULT_PATH:-${PARAM_SECOND_RESULT_PATH:-BASE-analysis-result.xml}}"
+          fi
+          if isarray DELTA_RESULT_PATH
+          then declare -n DELTA_PATHS=DELTA_RESULT_PATH
+          else declare DELTA_PATHS="${DELTA_RESULT_PATH:-${PARAM_DELTA_RESULT_PATH:-/dev/null}}"
+          fi
+
+          LAST=$(node -pe 'Math.max(...process.argv.slice(1).map(Number)) - 1' ${#FIRST_PATHS[*]} ${#SECOND_PATHS[*]} ${#DELTA_PATHS[*]})
+          for INDEX in $(seq 0 $LAST)
+          do
+            FIRST="${FIRST_PATHS[$INDEX]}"
+            SECOND="${SECOND_PATHS[$INDEX]}"
+            DELTA="${DELTA_PATHS[$INDEX]}"
+
+            mkdir -p $(dirname "${DELTA}")
+
+            NODE_DEBUG="$COMMAND" "$COMMAND" $OPTIONS "${FIRST}" "${SECOND}" | tee "${DELTA}"
+          done

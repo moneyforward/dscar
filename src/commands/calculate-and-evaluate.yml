@@ -5,10 +5,6 @@ description: |
 
   [1]: https://www.npmjs.com/package/junit-reports-combiner
 parameters:
-  analysis-name:
-    description: Analysis name
-    type: string
-    default: "true"
   calculate:
     description: Specify the steps for calculating the difference
     type: steps
@@ -27,23 +23,22 @@ parameters:
     type: env_var_name
     default: GITHUB_TOKEN
 steps:
-  - set-analysis-result-paths:
-      analysis-name: << parameters.analysis-name >>
+  - combine:
       analysis-results-path: << parameters.analysis-results-path >>
+  - set-analysis-result-paths:
+      analysis-results-path: << parameters.analysis-results-path >>
+      has-aggregated: true
   - steps: << parameters.calculate >>
   - evaluate:
-      analysis-name: << parameters.analysis-name >>
       analysis-results-path: << parameters.analysis-results-path >>
-      pattern: '.*/DELTA-analysis-results\.xml$'
+      pattern: '.*/([0-9]+-|)DELTA-analysis-result\.xml$'
   - transform:
-      analysis-name: << parameters.analysis-name >>
       analysis-results-path: << parameters.analysis-results-path >>
       test-results-path: << parameters.test-results-path >>
-      pattern: '.*/DELTA-analysis-results\.xml$'
+      pattern: '.*/([0-9]+-|)DELTA-analysis-result\.xml$'
   - store_test_results:
       path: << parameters.test-results-path >>
   - comment:
-      analysis-name: << parameters.analysis-name >>
       analysis-results-path: << parameters.analysis-results-path >>
-      pattern: '.*/DELTA-analysis-results\.xml$'
+      pattern: '.*/([0-9]+-|)DELTA-analysis-result\.xml$'
       vcs-api-token: << parameters.vcs-api-token >>

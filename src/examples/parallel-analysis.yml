@@ -2,27 +2,27 @@ description: Execute HEAD and BASE analysis jobs in parallel and calculate the d
 usage:
   version: 2.1
   orbs:
-    dscar: naokikimura/dscar@0.6.0
+    dscar: naokikimura/dscar@0.8.1
   workflows:
     analyze-code-statically:
       jobs:
         - dscar/analyze: &analyze
             name: analyze head using eslint
             analysis-name: ESLint
-            has-reconstructed: true
             executor:
               name: dscar/default
+              project-git_url: << pipeline.project.git_url >>
+              git-base_revision: << pipeline.git.base_revision >>
+              git-revision: << pipeline.git.revision >>
               docker-image: circleci/node:10.16.0
             pre-steps:
-              - attach_workspace:
-                  at: .
               - run: npm install
             analysis-results-path: /tmp/workspace/analysis-results
             test-results-path: ""
             analyze:
               - dscar/analyze:
                   prepare: []
-                  starting-points: 'client/src/**/*.@(ts|tsx)'
+                  starting-points: client/src
                   analysis-command: npx
                   analysis-arguments: eslint --ext .js,.jsx,.ts,.tsx -f checkstyle
             post-steps:

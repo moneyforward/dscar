@@ -1,8 +1,8 @@
-description: Calculate Brakeman's analysis results for update difference between HEAD branch and BASE branch
+description: Calculate Reek's analysis results for update difference between HEAD branch and BASE branch
 usage:
   version: 2.1
   orbs:
-    dscar: naokikimura/dscar@0.6.0
+    dscar: naokikimura/dscar@0.8.1
   workflows:
     analyze-code-statically:
       jobs:
@@ -10,6 +10,9 @@ usage:
             name: reek
             executor:
               name: dscar/default
+              project-git_url: << pipeline.project.git_url >>
+              git-base_revision: << pipeline.git.base_revision >>
+              git-revision: << pipeline.git.revision >>
               docker-image: circleci/ruby
             pre-steps:
               - run: sudo gem install reek

@@ -78,7 +78,12 @@ parameters:
     description: Elapsed time the command can run without output. The string is a decimal with unit suffix, such as “20m”, “1.25h”, “5s”
     type: string
     default: 10m
+  max-procs:
+    description: Specify the maximum number of processes to run at the same time
+    type: integer
+    default: 1
 steps:
+  - run: echo "export -n ANALYSIS_ARGUMENTS HEADER_ARGUMENTS FOOTER_ARGUMENTS TRANSFORMATION_ARGUMENTS" >> $BASH_ENV
   - steps: << parameters.prepare >>
   - run:
       name: << parameters.step-name >>
@@ -116,7 +121,7 @@ steps:
           } |
             circleci tests split --show-counts --split-by=filesize |
             tr '\n' '\0' |
-            xargs -0t "${ANALYSIS_COMMAND:-true}" "${ANALYSIS_ARGUMENTS[@]}" ${PARAM_ANALYSIS_ARGUMENTS} |
+            xargs -0tP << parameters.max-procs >> "${ANALYSIS_COMMAND:-true}" "${ANALYSIS_ARGUMENTS[@]}" ${PARAM_ANALYSIS_ARGUMENTS} |
             cat \
               <("${HEADER_COMMAND:-true}" "${HEADER_ARGUMENTS[@]}" ${PARAM_HEADER_ARGUMENTS}) \
               - \

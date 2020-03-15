@@ -56,10 +56,20 @@ steps:
             then
               sudo apt-get install xmlstarlet jq
 
+              function relativize {
+                RELATIVE_PATH="${1#${PWD}/}"
+                echo "${RELATIVE_PATH#./}"
+              }
+
               PR_PATH="${CIRCLE_PULL_REQUEST#https://github.com/}"
               PR_URL="https://api.github.com/repos/${PR_PATH/pull/pulls}"
               REVIEW_COMMENT_URL="${PR_URL}/comments"
               PR_COMMENT_URL="${PR_URL/pulls/issues}/comments"
+              REQUEST_HEADERS=(
+                -H "Authorization: token ${<< parameters.vcs-api-token >>}"
+                -H 'Accept: application/vnd.github.comfort-fade-preview+json'
+                -H "Content-Type: application/json"
+              )
 
               find "${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}" -type f -regextype posix-extended -regex "$PATTERN" |
               while read -r RESULT_PATH
@@ -69,9 +79,8 @@ steps:
                   xmlstarlet sel -t -m '//error' -e comment -a file -v '../@name' -b -c '.' -b -n |
                   while read -r COMMENT
                   do
-                    FILE=$(echo "$COMMENT" | xmlstarlet sel -t -m '/comment' -v '@file')
-                    REAL_PATH=$(realpath "$FILE")
-                    RELATIVE_PATH="${REAL_PATH#${PWD}/}"
+                    FILE="$(echo "$COMMENT" | xmlstarlet sel -t -m '/comment' -v '@file')"
+                    RELATIVE_PATH="$(relativize "${FILE}")"
 
                     LINE="$(echo "$COMMENT" | xmlstarlet sel -t -m '//error' -v '@line')"
 
@@ -88,18 +97,16 @@ steps:
                       --arg 'line' "${LINE}" \
                       '{ line: $line|tonumber, side: "RIGHT", commit_id: $commit_id, path: $path, body: . }' |
                     tee /dev/stderr |
-                    curl -SsL -H "Authorization: token ${<< parameters.vcs-api-token >>}" -H 'Accept: application/vnd.github.comfort-fade-preview+json' -H "Content-Type: application/json" --data-binary @- "${COMMENT_URL}"
+                    (
+                      set +e
+                      REQUEST_BODY="$(mktemp)"
+                      cat > "${REQUEST_BODY}"
+                      curl -SsfL "${REQUEST_HEADERS[@]}" --data-binary "@${REQUEST_BODY}" "${COMMENT_URL}" || {
+                        < "${REQUEST_BODY}" jq -M '{ body: "<p>:warning: The warning could not be commented as a review comment. This warning is probably about a change made to the base commit. If you rebase, the check may be successful.</p><blockquote>\(.body)</blockquote>" }' |
+                        curl -SsfL "${REQUEST_HEADERS[@]}" --data-binary "@-" "${PR_COMMENT_URL}"
+                      }
+                    )
                   done
-                } < "$RESULT_PATH"
-                {
-                  xmlstarlet sel -t -v 'count(//error)' -n |
-                  jq -cM \
-                    --arg 'username' "${CIRCLE_USERNAME}" \
-                    --arg 'analyzer' "${ANALYSIS_NAME}" \
-                    --arg 'build_url' "${CIRCLE_BUILD_URL}" \
-                    '{ body: "@\($username) \n :warning: \($analyzer) pointed out \(.) issues. \n See \($build_url)#tests"}' |
-                  tee /dev/stderr |
-                  curl -SsfL -H "Authorization: token ${<< parameters.vcs-api-token >>}" -H "Content-Type: application/json" --data-binary @- "${PR_COMMENT_URL}"
                 } < "$RESULT_PATH"
               done
             else

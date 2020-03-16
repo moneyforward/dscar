@@ -108,11 +108,11 @@ steps:
             if $SHOULD_FIND
             then {
               echo "$STARTING_POINTS" | awk NF | while read -r path; do printf '%q\n' "$path" || exit $?; done
-              echo '-type f ( -path ""'
+              echo '-type f -regextype "posix-extended" ( -path ""'
               echo "$PATTERNS_TO_INCLUDE" | awk NF | while read -r pattern; do printf -- '-o -regex %q\n' "$pattern" || exit $? ; done
               echo ') '
               echo "$PATTERNS_TO_EXCLUDE" | awk NF | while read -r pattern; do printf '! -regex %q\n' "$pattern" || exit $? ; done
-              echo '-regextype "posix-extended" -print'
+              echo ' -print'
             } | xargs -t find
             else {
               echo "$STARTING_POINTS"

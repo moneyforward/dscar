@@ -5,6 +5,7 @@ parameters:
     type: string
     default: "/tmp/analysis-results"
   pattern:
+    description: Specify pattern to include by regular expression
     type: string
     default: ".*"
 steps:

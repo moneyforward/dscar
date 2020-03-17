@@ -2,7 +2,7 @@ description: Calculate Reek's analysis results for update difference between HEA
 usage:
   version: 2.1
   orbs:
-    dscar: naokikimura/dscar@0.8.1
+    dscar: naokikimura/dscar@0.8.2
   workflows:
     analyze-code-statically:
       jobs:

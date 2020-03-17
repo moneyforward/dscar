@@ -34,7 +34,16 @@ parameters:
     description: Specify the environment variable name where the VCS (Version Control System) API token is set.
     type: env_var_name
     default: GITHUB_TOKEN
+  cache-key-prefix:
+    description:
+    type: string
+    default: "source-v1-"
 steps:
+  - restore_cache:
+      keys:
+        - << parameters.cache-key-prefix >>{{ .Branch }}-{{ .Revision }}
+        - << parameters.cache-key-prefix >>{{ .Branch }}-
+        - << parameters.cache-key-prefix >>
   - when:
       condition: << parameters.path >>
       steps:
@@ -73,3 +82,7 @@ steps:
                 fi
 
                 git checkout "${BASE:-HEAD^}" || git checkout HEAD^
+  - save_cache:
+      key: << parameters.cache-key-prefix >>{{ .Branch }}-{{ .Revision }}
+      paths:
+        - ".git"

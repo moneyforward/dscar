@@ -53,10 +53,6 @@ parameters:
     description: Path to save analysis result
     type: string
     default: "/dev/null"
-  ignore-exit-code:
-    description: Specify true if you want the exit code of the analysis step to always return 0.
-    type: boolean
-    default: false
   prepare:
     description: Specify the required steps before analysis if necessary
     type: steps
@@ -74,6 +70,14 @@ parameters:
     description: Specify the upper limit of the exit code that is regarded as normal termination
     type: integer
     default: 124
+  ignore-exit-code:
+    description: Specify true if you want the exit code of the analysis step to always return 0.
+    type: boolean
+    default: false
+  error-pattern:
+    description: Specify the pattern if you want to detect analyzing errors from the standard error
+    type: string
+    default: '(?!)'
   no-output-timeout:
     description: Elapsed time the command can run without output. The string is a decimal with unit suffix, such as “20m”, “1.25h”, “5s”
     type: string
@@ -101,9 +105,15 @@ steps:
         PARAM_FOOTER_ARGUMENTS: << parameters.footer-arguments >>
         PARAM_TRANSFORMATION_ARGUMENTS: << parameters.transformation-arguments >>
         PARAM_RESULT_PATH: << parameters.result-path >>
+        ERROR_PATTERN: << parameters.error-pattern >>
       command: |
           set +e -x
-          pwd
+
+          STDERR_TEMP="$(mktemp)"
+          rm "${STDERR_TEMP}" && mkfifo "${STDERR_TEMP}"
+          tee /dev/stderr <"${STDERR_TEMP}" | { ! grep -E "${ERROR_PATTERN}" >/dev/null; } &
+          ERROR_FILTER=$!
+
           {
             if $SHOULD_FIND
             then {
@@ -119,14 +129,16 @@ steps:
             }
             fi
           } |
+          {
             circleci tests split --show-counts --split-by=filesize |
             tr '\n' '\0' |
-            xargs -0tP << parameters.max-procs >> "${ANALYSIS_COMMAND:-true}" "${ANALYSIS_ARGUMENTS[@]}" ${PARAM_ANALYSIS_ARGUMENTS} |
+            xargs -0P << parameters.max-procs >> "${ANALYSIS_COMMAND:-true}" "${ANALYSIS_ARGUMENTS[@]}" ${PARAM_ANALYSIS_ARGUMENTS} 2>"${STDERR_TEMP}" |
             cat \
               <("${HEADER_COMMAND:-true}" "${HEADER_ARGUMENTS[@]}" ${PARAM_HEADER_ARGUMENTS}) \
               - \
               <("${FOOTER_COMMAND:-true}" "${FOOTER_ARGUMENTS[@]}" ${PARAM_FOOTER_ARGUMENTS}) |
-            "${TRANSFORMATION_COMMAND:-cat}" "${TRANSFORMATION_ARGUMENTS[@]}" ${PARAM_TRANSFORMATION_ARGUMENTS}  |
-            tee "${RESULT_PATH:-${PARAM_RESULT_PATH:-/dev/null}}" ><< parameters.redirecting-output >> ||
-            test $? -lt << parameters.exit-code-threshold >> || << parameters.ignore-exit-code >>
+            "${TRANSFORMATION_COMMAND:-cat}" "${TRANSFORMATION_ARGUMENTS[@]}" ${PARAM_TRANSFORMATION_ARGUMENTS} |
+            tee "${RESULT_PATH:-${PARAM_RESULT_PATH:-/dev/null}}" ><< parameters.redirecting-output >>
+          } ||
+          test $? -lt << parameters.exit-code-threshold >> && wait ${ERROR_FILTER} || << parameters.ignore-exit-code >>
       no_output_timeout: << parameters.no-output-timeout >>

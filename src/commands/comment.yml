@@ -72,6 +72,8 @@ steps:
                 -H "Content-Type: application/json"
               )
 
+              MESSAGES_THAT_COULD_NOT_BE_COMMENTED="$(mktemp)"
+
               find "${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}" -type f -regextype posix-extended -regex "$PATTERN" |
               while read -r RESULT_PATH
               do
@@ -103,13 +105,19 @@ steps:
                       REQUEST_BODY="$(mktemp)"
                       cat > "${REQUEST_BODY}"
                       curl -SsfL "${REQUEST_HEADERS[@]}" --data-binary "@${REQUEST_BODY}" "${COMMENT_URL}" || {
-                        < "${REQUEST_BODY}" jq -M '{ body: "<p>:warning: The warning could not be commented as a review comment. This warning is probably about a change made to the base commit. If you rebase, the check may be successful.</p><blockquote>\(.body)</blockquote>" }' |
-                        curl -SsfL "${REQUEST_HEADERS[@]}" --data-binary "@-" "${PR_COMMENT_URL}"
+                        cat < "${REQUEST_BODY}" >> "${MESSAGES_THAT_COULD_NOT_BE_COMMENTED}"
                       }
                     )
                   done
                 } < "$RESULT_PATH"
               done
+
+              if [ $(jq -srM 'length' < "${MESSAGES_THAT_COULD_NOT_BE_COMMENTED}") -gt 0 ]
+              then
+                FILTER='{ body: "<article><p>:warning: \(length) warnings could not be commented as a review comment. These warnings is probably about a change made to the base commit. If you rebase, the check may be successful.</p><details>\(map("<blockquote>\(.body)</blockquote>")|join(""))</details></article>" }'
+                jq -srM "${FILTER}" < "${MESSAGES_THAT_COULD_NOT_BE_COMMENTED}" |
+                curl -SsfL "${REQUEST_HEADERS[@]}" --data-binary "@-" "${PR_COMMENT_URL}"
+              fi
             else
               echo "sorry. Only GitHub is supported."
             fi

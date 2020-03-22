@@ -42,6 +42,7 @@ steps:
   - when:
       condition: << parameters.test-results-path >>
       steps:
+        - restore_comment-fingerprints
         - evaluate:
             analysis-results-path: << parameters.analysis-results-path >>
         - transform:
@@ -52,3 +53,4 @@ steps:
         - comment:
             analysis-results-path: << parameters.analysis-results-path >>
             vcs-api-token: << parameters.vcs-api-token >>
+        - save_comment-fingerprints

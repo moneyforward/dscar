@@ -29,6 +29,7 @@ steps:
       analysis-results-path: << parameters.analysis-results-path >>
       has-aggregated: true
   - steps: << parameters.calculate >>
+  - restore_comment-fingerprints
   - evaluate:
       analysis-results-path: << parameters.analysis-results-path >>
       pattern: '.*/([0-9]+-|)DELTA-analysis-result\.xml$'
@@ -42,3 +43,4 @@ steps:
       analysis-results-path: << parameters.analysis-results-path >>
       pattern: '.*/([0-9]+-|)DELTA-analysis-result\.xml$'
       vcs-api-token: << parameters.vcs-api-token >>
+  - save_comment-fingerprints

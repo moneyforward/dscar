@@ -79,6 +79,11 @@ steps:
               do
                 {
                   ANALYSIS_NAME=$(echo "${RESULT_PATH#${ANALYSIS_RESULTS_PATH}/}" | sed -re 's/^([^\/]*)\/.*$/\1/')
+                  COMMENT_FINGERPRINTS_PATH="/tmp/dscar/comment-fingerprints/${ANALYSIS_NAME}"
+                  COMMENT_FINGERPRINTS="${COMMENT_FINGERPRINTS_PATH}/$(echo "${CIRCLE_PULL_REQUEST}" | sha1sum | cut -c1-40)"
+                  mkdir -p "$(dirname "${COMMENT_FINGERPRINTS}")"
+                  touch "${COMMENT_FINGERPRINTS}"
+
                   xmlstarlet sel -t -m '//error' -e comment -a file -v '../@name' -b -c '.' -b -n |
                   while read -r COMMENT
                   do
@@ -104,9 +109,17 @@ steps:
                       set +e
                       REQUEST_BODY="$(mktemp)"
                       cat > "${REQUEST_BODY}"
-                      curl -SsfL "${REQUEST_HEADERS[@]}" --data-binary "@${REQUEST_BODY}" "${COMMENT_URL}" || {
-                        cat < "${REQUEST_BODY}" >> "${MESSAGES_THAT_COULD_NOT_BE_COMMENTED}"
-                      }
+                      if ! { jq -cM 'del(.commit_id)' | sha1sum -c "${COMMENT_FINGERPRINTS}" 2>/dev/null | grep -q 'OK$' ; } < "${REQUEST_BODY}"
+                      then
+                        if curl -SsfL "${REQUEST_HEADERS[@]}" --data-binary "@${REQUEST_BODY}" "${COMMENT_URL}"
+                        then
+                          { jq -cM 'del(.commit_id)' | sha1sum ; } < "${REQUEST_BODY}" >> "${COMMENT_FINGERPRINTS}" 
+                        else
+                          cat < "${REQUEST_BODY}" >> "${MESSAGES_THAT_COULD_NOT_BE_COMMENTED}"
+                        fi
+                      else
+                        echo 'This warning has been commented.' >&2
+                      fi
                     )
                   done
                 } < "$RESULT_PATH"

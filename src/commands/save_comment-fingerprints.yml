@@ -1,0 +1,14 @@
+description:
+parameters:
+  when:
+    description: "Specify when to enable or disable the step. Takes the following values: always, on_success, on_fail (default: on_fail)"
+    type: enum
+    enum: [on_success, always, on_fail]
+    default: on_fail
+steps:
+  - save_cache:
+      name: Saving comment fingerprints cache
+      key: dscar-{{ .Environment.CIRCLE_JOB }}-comment-fingerprints-v1-{{ .Branch }}-{{ .Revision }}
+      paths:
+        - /tmp/dscar/comment-fingerprints
+      when: << parameters.when >>

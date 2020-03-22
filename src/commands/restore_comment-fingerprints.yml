@@ -1,0 +1,7 @@
+description:
+steps:
+  - restore_cache:
+      name: Restoring comment fingerprints cache
+      keys:
+        - dscar-{{ .Environment.CIRCLE_JOB }}-comment-fingerprints-v1-{{ .Branch }}-{{ .Revision }}
+        - dscar-{{ .Environment.CIRCLE_JOB }}-comment-fingerprints-v1-{{ .Branch }}-

@@ -6,6 +6,7 @@ ORB_YAML_PATH = dist/orb.yml
 
 $(ORB_YAML_PATH): src/*.yml src/*/*.yml
 	mkdir -p `dirname $(ORB_YAML_PATH)`
+	yamllint ./src
 	circleci config pack src/ | tee $(ORB_YAML_PATH) | circleci orb validate - || rm -f $(ORB_YAML_PATH)
 
 .PHONY: publish

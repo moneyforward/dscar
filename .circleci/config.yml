@@ -1,0 +1,29 @@
+version: 2.1
+
+parameters:
+  run-integration-tests:
+    type: boolean
+    default: false
+  dev-orb-version:
+    type: string
+    default: "dev:alpha"
+
+orbs:
+  dscar: naokikimura/dscar@<< pipeline.parameters.dev-orb-version >>
+
+jobs:
+  publish:
+    docker:
+      - image: circleci/circleci-cli
+    steps:
+      - checkout
+      - run:
+          environment:
+            VERSION: << pipeline.parameters.dev-orb-version >>
+          command: |
+            make publish
+
+workflows:
+  integration-tests:
+    jobs:
+      - publish

@@ -9,21 +9,22 @@ parameters:
     default: "dev:alpha"
 
 orbs:
+  orb-tools: circleci/orb-tools@9.0.1
   dscar: naokikimura/dscar@<< pipeline.parameters.dev-orb-version >>
 
-jobs:
-  publish:
-    docker:
-      - image: circleci/circleci-cli
-    steps:
-      - checkout
-      - run:
-          environment:
-            VERSION: << pipeline.parameters.dev-orb-version >>
-          command: |
-            make publish
-
 workflows:
-  integration-tests:
+  lint_pack-validate_publish-dev:
     jobs:
-      - publish
+      - orb-tools/lint
+      - orb-tools/pack:
+          requires:
+            - orb-tools/lint
+      - orb-tools/publish-dev:
+          orb-name: naokikimura/dscar
+          requires:
+            - orb-tools/pack
+      - orb-tools/trigger-integration-tests-workflow:
+          name: trigger-integration-dev
+          requires:
+            - orb-tools/publish-dev
+    unless: << pipeline.parameters.run-integration-tests >>

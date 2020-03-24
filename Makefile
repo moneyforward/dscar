@@ -31,3 +31,6 @@ process: dist/orb.yml
 .PHONY: create
 create:
 	circleci orb create $(ORB)
+
+.circleci/compiled-config.yml: publish
+	circleci config process .circleci/config.yml >.circleci/compiled-config.yml

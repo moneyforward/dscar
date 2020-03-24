@@ -5,9 +5,13 @@ description: |
 
   1. If there is a pull request associated with the current build, use the VCS API to identify the BASE commit.
   2. If the `CIRCLE_COMPARE_URL` environment variable is set, the value identifies the BASE commit.
-    - If `CIRCLE_COMPARE_URL.txt` exists even if the `CIRCLE_COMPARE_URL` environment variable is not set, the contents of that file will be used as the value of `CIRCLE_COMPARE_URL`.
+    - If `CIRCLE_COMPARE_URL.txt` exists even if the `CIRCLE_COMPARE_URL` environment variable is not set,
+      the contents of that file will be used as the value of `CIRCLE_COMPARE_URL`.
 
-  Note: CircleCI 2.1 will disable the `CIRCLE_COMPARE_URL` environment variable. Please reconfigure `CIRCLE_COMPARE_URL` somehow.
+  **Note:**
+
+  CircleCI 2.1 will disable the `CIRCLE_COMPARE_URL` environment variable.
+  Please reconfigure `CIRCLE_COMPARE_URL` somehow.
 
   There are several ways to reconfigure the `CIRCLE_COMPARE_URL` environment variable:
 
@@ -53,7 +57,11 @@ steps:
             if [ ! -v CIRCLE_COMPARE_URL -o -z "${CIRCLE_COMPARE_URL}" ] && [ -e "${CIRCLE_COMPARE_URL_PATH}" ]
             then CIRCLE_COMPARE_URL=$(cat "${CIRCLE_COMPARE_URL_PATH}")
             fi
-            COMMIT_RANGE=$(echo "${CIRCLE_COMPARE_URL}" | ( set +e; grep -E '/compare/([0-9a-f]{7,40})[.]{2,}[0-9a-f]{7,40}$' ; : ) | sed -re 's/^.*\/compare\/([0-9a-f]{7,40}[.]{2,}[0-9a-f]{7,40})$/\1/')
+            COMMIT_RANGE=$(
+              echo "${CIRCLE_COMPARE_URL}" |
+              ( set +e; grep -E '/compare/([0-9a-f]{7,40})[.]{2,}[0-9a-f]{7,40}$' ; : ) |
+              sed -re 's/^.*\/compare\/([0-9a-f]{7,40}[.]{2,}[0-9a-f]{7,40})$/\1/'
+            )
             COMMITS[0]="${COMMIT_RANGE}"
           fi
 

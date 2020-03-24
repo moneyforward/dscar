@@ -13,7 +13,12 @@ parameters:
   git-revision:
     description: "Please set << pipeline.git-revision >>"
     type: string
+  analysis-results-path:
+    description: Specify the path to save the analysis results if you need to change it
+    type: string
+    default: "/tmp/dscar/analysis-results"
 docker:
   - image: << parameters.docker-image >>
 environment:
   CIRCLE_COMPARE_URL: << parameters.project-git_url >>/compare/<< parameters.git-base_revision >>..<< parameters.git-revision >>
+  DSCAR_ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>

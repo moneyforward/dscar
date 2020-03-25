@@ -2,7 +2,7 @@ description: Execute HEAD and BASE analysis jobs in parallel and calculate the d
 usage:
   version: 2.1
   orbs:
-    dscar: naokikimura/dscar@x.y.z
+    dscar: moneyforward/dscar@x.y.z
   workflows:
     analyze-code-statically:
       jobs:

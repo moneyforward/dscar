@@ -16,19 +16,11 @@ parameters:
     description: Check-out the BASE branch if true is specified
     type: boolean
     default: false
-  analysis-name:
-    description: Analysis name
-    type: string
-    default: "true"
   analyze:
     description: Specify analysis steps
     type: steps
     default:
       - analyze
-  analysis-results-path:
-    description: Specify the path to save the analysis results if you need to change it
-    type: string
-    default: "/tmp/analysis-results"
   test-results-path:
     description: Specify the value of the path parameter in the store_test_results step if you need to change it
     type: string
@@ -47,9 +39,7 @@ parallelism: << parameters.parallelism >>
 steps:
   - analyze-and-evaluate:
       is-target-branch-base: << parameters.is-target-branch-base >>
-      analysis-name: << parameters.analysis-name >>
       analyze: << parameters.analyze >>
-      analysis-results-path: << parameters.analysis-results-path >>
       test-results-path: << parameters.test-results-path >>
       vcs-api-token: << parameters.vcs-api-token >>
       circle_compare_url-path: << parameters.circle_compare_url-path >>

@@ -3,7 +3,7 @@ parameters:
   analysis-results-path:
     description: Specify the path to save the analysis results if you need to change it
     type: string
-    default: "/tmp/analysis-results"
+    default: ""
   pattern:
     description: Specify pattern to include by regular expression
     type: string
@@ -21,70 +21,106 @@ steps:
   - run:
       name: Add a review comment to the pull request
       environment:
-          ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
-          PATTERN: << parameters.pattern >>
+        ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
+        PATTERN: << parameters.pattern >>
       command: |
-          set -x
+        set -x
 
-          XSL=$(mktemp)
-          cat \<<-"EOT" > "$XSL"
-          <?xml version="1.0"?>
-          <xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:exslt="http://exslt.org/common" version="1.0" extension-element-prefixes="exslt">
-            <xsl:output method="html" omit-xml-declaration="yes" indent="no"/>
-            <xsl:param name="analyzer" select="true" />
-            <xsl:param name="path" select="''" />
-            <xsl:param name="username" select="''" />
-            <xsl:template match="//error">
-              <article>
-                @<xsl:value-of select="$username" />
-                <p><b>[<xsl:value-of select="$analyzer" />]</b><xsl:text> </xsl:text><span><xsl:value-of select="@message" /></span></p>
-                <details>
-                  <p><xsl:value-of select="." /></p>
-                  <p><xsl:value-of select="number(@line)" /> line , <xsl:value-of select="number(@column)" /> column in <code><xsl:value-of select="$path" /></code></p>
-                  <dl>
-                    <dt>Rule</dt><dd><xsl:value-of select="@source" /></dd>
-                    <dt>Severity</dt><dd><xsl:value-of select="@severity" /></dd>
-                  </dl>
-                </details>
-              </article>
-            </xsl:template>
-          </xsl:stylesheet>
-          EOT
+        XSL=$(mktemp)
+        cat \<<-"EOT" > "$XSL"
+        <?xml version="1.0"?>
+        <xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:exslt="http://exslt.org/common" version="1.0" extension-element-prefixes="exslt">
+          <xsl:output method="html" omit-xml-declaration="yes" indent="no"/>
+          <xsl:param name="analyzer" select="true" />
+          <xsl:param name="path" select="''" />
+          <xsl:param name="username" select="''" />
+          <xsl:template match="//error">
+            <article>
+              @<xsl:value-of select="$username" />
+              <p><b>[<xsl:value-of select="$analyzer" />]</b><xsl:text> </xsl:text><span><xsl:value-of select="@message" /></span></p>
+              <details>
+                <p><xsl:value-of select="." /></p>
+                <p><xsl:value-of select="number(@line)" /> line , <xsl:value-of select="number(@column)" /> column in <code><xsl:value-of select="$path" /></code></p>
+                <dl>
+                  <dt>Rule</dt><dd><xsl:value-of select="@source" /></dd>
+                  <dt>Severity</dt><dd><xsl:value-of select="@severity" /></dd>
+                </dl>
+              </details>
+            </article>
+          </xsl:template>
+        </xsl:stylesheet>
+        EOT
 
-          if [ -v CIRCLE_PULL_REQUEST ]
+        FILTER="{ body: \"$(
+        cat \<<-EOT | tr -s ' \n' ' '
+        <article>
+          <p>
+            :warning: \(length) warnings could not be commented as a review comment.
+            These warnings is probably about a change made to the base commit.
+            If you rebase, the check may be successful.
+          </p>
+          <details>\(map("<blockquote>\(.body)</blockquote>")|join(""))</details>
+        </article>
+        EOT
+        )\"}"
+
+        if [ -v CIRCLE_PULL_REQUEST ]
+        then
+          if echo "$CIRCLE_PULL_REQUEST" | grep '^https://github.com/'
           then
-            if echo "$CIRCLE_PULL_REQUEST" | grep '^https://github.com/'
-            then
-              sudo apt-get install xmlstarlet jq
+            sudo apt-get install xmlstarlet jq
 
-              function relativize {
-                RELATIVE_PATH="${1#${PWD}/}"
-                echo "${RELATIVE_PATH#./}"
-              }
+            function relativize {
+              RELATIVE_PATH="${1#${PWD}/}"
+              echo "${RELATIVE_PATH#./}"
+            }
 
-              PR_PATH="${CIRCLE_PULL_REQUEST#https://github.com/}"
+            ANALYSIS_RESULTS_PATH="${ANALYSIS_RESULTS_PATH:-${DSCAR_ANALYSIS_RESULTS_PATH:-/tmp/dscar/analysis-results}}"
+            REQUEST_HEADERS=(
+              -H "Authorization: token ${<< parameters.vcs-api-token >>}"
+              -H 'Accept: application/vnd.github.comfort-fade-preview+json'
+              -H "Content-Type: application/json"
+            )
+
+            for KEY in "${!DSCAR_COMMIT_RANGES[@]}"
+            do
+              COMMITS=( $(echo ${DSCAR_COMMIT_RANGES[$KEY]} | tr -s '.' '\t' ) )
+              BASE=${COMMITS[0]}
+              HEAD=${COMMITS[1]}
+              DELTA=$(echo -n "$KEY" | sha1sum | cut -d' ' -f1)
+              PULL_REQUEST="$KEY"
+              PR_PATH="${PULL_REQUEST#https://github.com/}"
               PR_URL="https://api.github.com/repos/${PR_PATH/pull/pulls}"
               REVIEW_COMMENT_URL="${PR_URL}/comments"
               PR_COMMENT_URL="${PR_URL/pulls/issues}/comments"
-              REQUEST_HEADERS=(
-                -H "Authorization: token ${<< parameters.vcs-api-token >>}"
-                -H 'Accept: application/vnd.github.comfort-fade-preview+json'
-                -H "Content-Type: application/json"
-              )
-
               MESSAGES_THAT_COULD_NOT_BE_COMMENTED="$(mktemp)"
 
-              find "${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}" -type f -regextype posix-extended -regex "$PATTERN" |
+              EXPRESSION=(
+                  -type f
+                  -regextype posix-extended
+                  -regex "$PATTERN"
+                  '('
+                    -regex ".*/([0-9]+-|)${HEAD}-analysis-result.xml$"
+                    -o
+                    -regex ".*/([0-9]+-|)${BASE}-analysis-result.xml$"
+                    -o
+                    -regex ".*/([0-9]+-|)${DELTA}-DELTA-analysis-result.xml$"
+                  ')'
+                   -printf '%P\n'
+              )
+              find "${ANALYSIS_RESULTS_PATH}" "${EXPRESSION[@]}" |
+              tee /dev/stderr |
               while read -r RESULT_PATH
               do
                 {
-                  ANALYSIS_NAME=$(echo "${RESULT_PATH#${ANALYSIS_RESULTS_PATH}/}" | sed -re 's/^([^\/]*)\/.*$/\1/')
+                  ANALYSIS_NAME=$( echo "${RESULT_PATH}" | tr '/' '\t' | cut -f1 )
                   COMMENT_FINGERPRINTS_PATH="/tmp/dscar/comment-fingerprints/${ANALYSIS_NAME}"
-                  COMMENT_FINGERPRINTS="${COMMENT_FINGERPRINTS_PATH}/$(echo "${CIRCLE_PULL_REQUEST}" | sha1sum | cut -c1-40)"
+                  COMMENT_FINGERPRINTS="${COMMENT_FINGERPRINTS_PATH}/$(echo "${PULL_REQUEST}" | sha1sum | cut -c1-40)"
                   mkdir -p "$(dirname "${COMMENT_FINGERPRINTS}")"
                   touch "${COMMENT_FINGERPRINTS}"
 
-                  xmlstarlet sel -t -m '//error' -e comment -a file -v '../@name' -b -c '.' -b -n |
+                  { xmlstarlet sel -t -m '//error' -e comment -a file -v '../@name' -b -c '.' -b -n || : ; } |
+                  tee /dev/stderr |
                   while read -r COMMENT
                   do
                     FILE="$(echo "$COMMENT" | xmlstarlet sel -t -m '/comment' -v '@file')"
@@ -113,7 +149,7 @@ steps:
                       then
                         if curl -SsfL "${REQUEST_HEADERS[@]}" --data-binary "@${REQUEST_BODY}" "${COMMENT_URL}"
                         then
-                          { jq -cM 'del(.commit_id)' | sha1sum ; } < "${REQUEST_BODY}" >> "${COMMENT_FINGERPRINTS}" 
+                          { jq -cM 'del(.commit_id)' | sha1sum ; } < "${REQUEST_BODY}" >> "${COMMENT_FINGERPRINTS}"
                         else
                           cat < "${REQUEST_BODY}" >> "${MESSAGES_THAT_COULD_NOT_BE_COMMENTED}"
                         fi
@@ -122,17 +158,17 @@ steps:
                       fi
                     )
                   done
-                } < "$RESULT_PATH"
+                } < "${ANALYSIS_RESULTS_PATH}/${RESULT_PATH}"
               done
 
               if [ $(jq -srM 'length' < "${MESSAGES_THAT_COULD_NOT_BE_COMMENTED}") -gt 0 ]
               then
-                FILTER='{ body: "<article><p>:warning: \(length) warnings could not be commented as a review comment. These warnings is probably about a change made to the base commit. If you rebase, the check may be successful.</p><details>\(map("<blockquote>\(.body)</blockquote>")|join(""))</details></article>" }'
                 jq -srM "${FILTER}" < "${MESSAGES_THAT_COULD_NOT_BE_COMMENTED}" |
                 curl -SsfL "${REQUEST_HEADERS[@]}" --data-binary "@-" "${PR_COMMENT_URL}"
               fi
-            else
-              echo "sorry. Only GitHub is supported."
-            fi
+            done
+          else
+            echo "sorry. Only GitHub is supported."
           fi
+        fi
       when: << parameters.when >>

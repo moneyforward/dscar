@@ -49,10 +49,14 @@ parameters:
     description: Arguments of transformation command
     type: string
     default: ""
-  result-path:
-    description: Path to save analysis result
+  analysis-name:
+    description: Analysis name
     type: string
-    default: "/dev/null"
+    default: "true"
+  analysis-results-path:
+    description: "Specify the path to save the analysis results if you need to change it (default: /tmp/dscar/analysis-results)"
+    type: string
+    default: ""
   prepare:
     description: Specify the required steps before analysis if necessary
     type: steps
@@ -104,41 +108,60 @@ steps:
         PARAM_HEADER_ARGUMENTS: << parameters.header-arguments >>
         PARAM_FOOTER_ARGUMENTS: << parameters.footer-arguments >>
         PARAM_TRANSFORMATION_ARGUMENTS: << parameters.transformation-arguments >>
-        PARAM_RESULT_PATH: << parameters.result-path >>
+        ANALYSIS_NAME: << parameters.analysis-name >>
+        ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
         ERROR_PATTERN: << parameters.error-pattern >>
       command: |
           set +e -x
 
-          STDERR_TEMP="$(mktemp)"
-          rm "${STDERR_TEMP}" && mkfifo "${STDERR_TEMP}"
-          tee /dev/stderr <"${STDERR_TEMP}" | { ! grep -E "${ERROR_PATTERN}" >/dev/null; } &
-          ERROR_FILTER=$!
+          RESULTS_DIR="${ANALYSIS_RESULTS_PATH:-${DSCAR_ANALYSIS_RESULTS_PATH:-/tmp/dscar/analysis-results}}/${ANALYSIS_NAME:-true}/${CIRCLE_NODE_INDEX}"
+          mkdir -p "${RESULTS_DIR}"
 
-          {
-            if $SHOULD_FIND
-            then {
-              echo "$STARTING_POINTS" | awk NF | while read -r path; do printf '%q\n' "$path" || exit $?; done
-              echo '-type f -regextype "posix-extended" ( -path ""'
-              echo "$PATTERNS_TO_INCLUDE" | awk NF | while read -r pattern; do printf -- '-o -regex %q\n' "$pattern" || exit $? ; done
-              echo ') '
-              echo "$PATTERNS_TO_EXCLUDE" | awk NF | while read -r pattern; do printf '! -regex %q\n' "$pattern" || exit $? ; done
-              echo ' -print'
-            } | xargs -t find
-            else {
-              echo "$STARTING_POINTS"
-            }
-            fi
-          } |
-          {
-            circleci tests split --show-counts --split-by=filesize |
-            tr '\n' '\0' |
-            xargs -0P << parameters.max-procs >> "${ANALYSIS_COMMAND:-true}" "${ANALYSIS_ARGUMENTS[@]}" ${PARAM_ANALYSIS_ARGUMENTS} 2>"${STDERR_TEMP}" |
-            cat \
-              <("${HEADER_COMMAND:-true}" "${HEADER_ARGUMENTS[@]}" ${PARAM_HEADER_ARGUMENTS}) \
-              - \
-              <("${FOOTER_COMMAND:-true}" "${FOOTER_ARGUMENTS[@]}" ${PARAM_FOOTER_ARGUMENTS}) |
-            "${TRANSFORMATION_COMMAND:-cat}" "${TRANSFORMATION_ARGUMENTS[@]}" ${PARAM_TRANSFORMATION_ARGUMENTS} |
-            tee "${RESULT_PATH:-${PARAM_RESULT_PATH:-/dev/null}}" ><< parameters.redirecting-output >>
-          } ||
-          test $? -lt << parameters.exit-code-threshold >> && wait ${ERROR_FILTER} || << parameters.ignore-exit-code >>
+          if [ "${DSCAR_ANALYSIS_TARGET^^}" = "BASE" ]
+          then FIELDS=1
+          elif [ "${DSCAR_ANALYSIS_TARGET^^}" = "HEAD" ]
+          then FIELDS=2
+          fi
+
+          COMMITS=( $( for SHA1 in $( echo ${DSCAR_COMMIT_RANGES[@]} | tr ' ' '\n' | tr -s '.' '\t' | cut -f "${FIELDS:-1,2}" ) ; do echo $SHA1 ; done | sort | uniq ) )
+
+          for SHA1 in ${COMMITS[@]:-${CIRCLE_SHA1}}
+          do
+            RESULT_PATH="${RESULTS_DIR}/${SHA1}-analysis-result.xml"
+
+            git reset --hard "${CIRCLE_SHA1}" && git checkout $SHA1
+
+            STDERR_TEMP="$(mktemp)"
+            rm "${STDERR_TEMP}" && mkfifo "${STDERR_TEMP}"
+            tee /dev/stderr <"${STDERR_TEMP}" | { ! grep -E "${ERROR_PATTERN}" >/dev/null; } &
+            ERROR_FILTER=$!
+
+            {
+              if $SHOULD_FIND
+              then {
+                echo "$STARTING_POINTS" | awk NF | while read -r path; do printf '%q\n' "$path" || exit $?; done
+                echo '-type f -regextype "posix-extended" ( -path ""'
+                echo "$PATTERNS_TO_INCLUDE" | awk NF | while read -r pattern; do printf -- '-o -regex %q\n' "$pattern" || exit $? ; done
+                echo ') '
+                echo "$PATTERNS_TO_EXCLUDE" | awk NF | while read -r pattern; do printf '! -regex %q\n' "$pattern" || exit $? ; done
+                echo ' -print'
+              } | xargs -t find
+              else {
+                echo "$STARTING_POINTS"
+              }
+              fi
+            } |
+            {
+              circleci tests split --show-counts --split-by=filesize |
+              tr '\n' '\0' |
+              xargs -0P << parameters.max-procs >> "${ANALYSIS_COMMAND:-true}" "${ANALYSIS_ARGUMENTS[@]}" ${PARAM_ANALYSIS_ARGUMENTS} 2>"${STDERR_TEMP}" |
+              cat \
+                <("${HEADER_COMMAND:-true}" "${HEADER_ARGUMENTS[@]}" ${PARAM_HEADER_ARGUMENTS}) \
+                - \
+                <("${FOOTER_COMMAND:-true}" "${FOOTER_ARGUMENTS[@]}" ${PARAM_FOOTER_ARGUMENTS}) |
+              "${TRANSFORMATION_COMMAND:-cat}" "${TRANSFORMATION_ARGUMENTS[@]}" ${PARAM_TRANSFORMATION_ARGUMENTS} |
+              tee "${RESULT_PATH}" ><< parameters.redirecting-output >>
+            } ||
+            test $? -lt << parameters.exit-code-threshold >> && wait ${ERROR_FILTER} || << parameters.ignore-exit-code >>
+          done
       no_output_timeout: << parameters.no-output-timeout >>

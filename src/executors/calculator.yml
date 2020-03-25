@@ -1,8 +1,0 @@
-description: Default calculation execution environment
-parameters:
-  docker-image:
-    description: Specify the image used to execute the analysis
-    type: string
-    default: circleci/node
-docker:
-  - image: << parameters.docker-image >>

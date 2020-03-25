@@ -8,7 +8,7 @@ parameters:
   executor:
     description: Specify the image used to execute analysis
     type: executor
-    default: calculator
+    default: default
   resource_class:
     description: Amount of CPU and RAM allocated to each container in a job.
     type: string
@@ -22,10 +22,6 @@ parameters:
     type: steps
     default:
       - calculate
-  analysis-results-path:
-    description: Specify the path to save the analysis results if you need to change it
-    type: string
-    default: "/tmp/analysis-results"
   test-results-path:
     description: Specify the value of the path parameter in the store_test_results step if you need to change it
     type: string
@@ -34,12 +30,16 @@ parameters:
     description: Specify the environment variable name where the VCS (Version Control System) API token is set.
     type: env_var_name
     default: GITHUB_TOKEN
+  circle_compare_url-path:
+    description: "Specify the path of `CIRCLE_COMPARE_URL.txt` if you are using `iynere/compare-url` orb"
+    type: string
+    default: ""
 executor: << parameters.executor >>
 resource_class: << parameters.resource_class >>
 parallelism: << parameters.parallelism >>
 steps:
   - calculate-and-evaluate:
       calculate: << parameters.calculate >>
-      analysis-results-path: << parameters.analysis-results-path >>
       test-results-path: << parameters.test-results-path >>
       vcs-api-token: << parameters.vcs-api-token >>
+      circle_compare_url-path: << parameters.circle_compare_url-path >>

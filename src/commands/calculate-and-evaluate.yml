@@ -10,10 +10,6 @@ parameters:
     type: steps
     default:
       - calculate
-  analysis-results-path:
-    description: Specify the path to save the analysis results if you need to change it
-    type: string
-    default: "/tmp/analysis-results"
   test-results-path:
     description: Specify the value of the path parameter in the store_test_results step if you need to change it
     type: string
@@ -22,25 +18,27 @@ parameters:
     description: Specify the environment variable name where the VCS (Version Control System) API token is set.
     type: env_var_name
     default: GITHUB_TOKEN
+  circle_compare_url-path:
+    description: "Specify the path of `CIRCLE_COMPARE_URL.txt` if you are using `iynere/compare-url` orb"
+    type: string
+    default: ""
 steps:
-  - combine:
-      analysis-results-path: << parameters.analysis-results-path >>
+  - declare-commit-ranges:
+      circle_compare_url-path: << parameters.circle_compare_url-path >>
+      vcs-api-token: << parameters.vcs-api-token >>
+  - combine
   - set-analysis-result-paths:
-      analysis-results-path: << parameters.analysis-results-path >>
       has-aggregated: true
   - steps: << parameters.calculate >>
   - restore_comment-fingerprints
   - evaluate:
-      analysis-results-path: << parameters.analysis-results-path >>
-      pattern: '.*/([0-9]+-|)DELTA-analysis-result\.xml$'
+      pattern: &pattern '.*/([0-9]+-|)[0-9a-f]+-DELTA-analysis-result.xml$'
   - transform:
-      analysis-results-path: << parameters.analysis-results-path >>
       test-results-path: << parameters.test-results-path >>
-      pattern: '.*/([0-9]+-|)DELTA-analysis-result\.xml$'
+      pattern: *pattern
   - store_test_results:
       path: << parameters.test-results-path >>
   - comment:
-      analysis-results-path: << parameters.analysis-results-path >>
-      pattern: '.*/([0-9]+-|)DELTA-analysis-result\.xml$'
+      pattern: *pattern
       vcs-api-token: << parameters.vcs-api-token >>
   - save_comment-fingerprints

@@ -10,6 +10,7 @@ description: |
 
 display:
   home_url: https://github.com/naokikimura/dscar
+  source_url: https://github.com/naokikimura/dscar
 
 orbs:
   node: circleci/node@1.1.6

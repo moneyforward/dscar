@@ -12,6 +12,68 @@ orbs:
   orb-tools: circleci/orb-tools@9.0.1
   dscar: naokikimura/dscar@<< pipeline.parameters.dev-orb-version >>
 
+anchors:
+  dscar-default-executor: &dscar-default-executor
+    name: dscar/default
+    project-git_url: "" # << pipeline.project.git_url >>
+    git-base_revision: "" # << pipeline.git.base_revision >>
+    git-revision: "" # << pipeline.git.revision >>
+
+jobs:
+  integration-test-1:
+    executor:
+      <<: *dscar-default-executor
+    steps:
+      - checkout
+      - dscar/analyze
+  integration-test-3:
+    executor:
+      <<: *dscar-default-executor
+    steps:
+      - run:
+          name: setup
+          command: |
+            mkdir -p ${DSCAR_ANALYSIS_RESULTS_PATH}/true/{0,1}
+            for FILE in ${DSCAR_ANALYSIS_RESULTS_PATH}/true/{0,1}/{01234567,89abcdef}-analysis-result.xml
+            do
+              echo '<checkstyle />' > $FILE
+            done
+            declare -Ax DSCAR_COMMIT_RANGES=( [http://example.com/]='01234567..89abcdef' )
+            echo "$(declare -p DSCAR_COMMIT_RANGES)" >> $BASH_ENV
+      - dscar/combine
+      - run:
+          name: evaluate
+          command: |
+            COUNT=$(
+              find ${DSCAR_ANALYSIS_RESULTS_PATH} -type f |
+              tee /dev/stderr |
+              grep -cE '.*/@/[0-9]+-(01234567|89abcdef)-analysis-result.xml'
+            )
+            test $COUNT -eq 2
+  integration-test-4:
+    executor:
+      <<: *dscar-default-executor
+    steps:
+      - run:
+          name: setup
+          command: |
+            mkdir -p ${DSCAR_ANALYSIS_RESULTS_PATH}/true/{0,1}
+            for FILE in ${DSCAR_ANALYSIS_RESULTS_PATH}/true/{0,1}/{01234567,89abcdef}-analysis-result.xml
+            do
+              echo '<checkstyle />' > $FILE
+            done
+            declare -Ax DSCAR_COMMIT_RANGES=( [http://example.com/]='01234567..89abcdef' )
+            echo "$(declare -p DSCAR_COMMIT_RANGES)" >> $BASH_ENV
+      - dscar/set-analysis-result-paths:
+          has-aggregated: false
+      - run:
+          name: evaluate
+          command: |
+            set -x
+            test ${#FIRST_RESULT_PATH[@]} -eq 1 -a "${FIRST_RESULT_PATH}" = "${DSCAR_ANALYSIS_RESULTS_PATH}/true/${CIRCLE_NODE_INDEX}/89abcdef-analysis-result.xml"
+            test ${#SECOND_RESULT_PATH[@]} -eq 1 -a "${SECOND_RESULT_PATH}" = "${DSCAR_ANALYSIS_RESULTS_PATH}/true/${CIRCLE_NODE_INDEX}/01234567-analysis-result.xml"
+            test ${#DELTA_RESULT_PATH[@]} -eq 1 -a "${DELTA_RESULT_PATH}" = "${DSCAR_ANALYSIS_RESULTS_PATH}/true/${CIRCLE_NODE_INDEX}/9c17e047f58f9220a7008d4f18152fee4d111d14-DELTA-analysis-result.xml"
+
 workflows:
   lint_pack-validate_publish-dev:
     jobs:
@@ -28,3 +90,9 @@ workflows:
           requires:
             - orb-tools/publish-dev
     unless: << pipeline.parameters.run-integration-tests >>
+  integration-tests:
+    jobs:
+      - integration-test-1
+      - integration-test-3
+      - integration-test-4
+    when: << pipeline.parameters.run-integration-tests >>

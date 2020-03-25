@@ -34,11 +34,11 @@ steps:
   - run:
       name: Calculate the difference
       environment:
-          COMMAND: checkstyle-reports-combiner
-          OPTIONS: << parameters.options >> --operator=except
-          PARAM_FIRST_RESULT_PATH: << parameters.first-result-path >>
-          PARAM_SECOND_RESULT_PATH: << parameters.second-result-path >>
-          PARAM_DELTA_RESULT_PATH: << parameters.delta-result-path >>
+        COMMAND: checkstyle-reports-combiner
+        OPTIONS: << parameters.options >> --operator=except
+        PARAM_FIRST_RESULT_PATH: << parameters.first-result-path >>
+        PARAM_SECOND_RESULT_PATH: << parameters.second-result-path >>
+        PARAM_DELTA_RESULT_PATH: << parameters.delta-result-path >>
       command: |
           set -x
 

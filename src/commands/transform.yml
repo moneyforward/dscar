@@ -1,9 +1,9 @@
 description: transform Checkstyle to JUnit
 parameters:
   analysis-results-path:
-    description: Specify the path to save the analysis results if you need to change it
+    description: "Specify the path to save the analysis results if you need to change it (default: /tmp/dscar/analysis-results)"
     type: string
-    default: "/tmp/analysis-results"
+    default: ""
   test-results-path:
     description: Specify the value of the path parameter in the store_test_results step if you need to change it
     type: string
@@ -21,9 +21,9 @@ steps:
   - run:
       name: transform Checkstyle to JUnit
       environment:
-          ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
-          TEST_RESULTS_PATH: << parameters.test-results-path >>
-          PATTERN: << parameters.pattern >>
+        ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
+        TEST_RESULTS_PATH: << parameters.test-results-path >>
+        PATTERN: << parameters.pattern >>
       command: |
           set -x
 
@@ -84,14 +84,15 @@ steps:
           </xsl:stylesheet>
           EOT
 
-          ANALYSIS_RESULTS_PATH="${ANALYSIS_RESULTS_PATH:-/tmp/analysis-results}"
+          ANALYSIS_RESULTS_PATH="${ANALYSIS_RESULTS_PATH:-${DSCAR_ANALYSIS_RESULTS_PATH:-/tmp/dscar/analysis-results}}"
           TEST_RESULTS_PATH="${TEST_RESULTS_PATH:-/tmp/test-results}"
 
           find "$ANALYSIS_RESULTS_PATH" -type f -regextype posix-extended -regex "$PATTERN" -printf '%P\n' |
+          circleci tests split --show-counts |
           while read -r RESULT_PATH
           do
-            ANALYSIS_NAME=$(echo "${RESULT_PATH#${ANALYSIS_RESULTS_PATH}/}" | sed -re 's/^([^\/]*)\/.*$/\1/')
-            mkdir -p "${TEST_RESULTS_PATH}/`dirname $RESULT_PATH`"
+            ANALYSIS_NAME=$( echo "${RESULT_PATH}" | tr '/' '\t' | cut -f1 )
+            mkdir -p "${TEST_RESULTS_PATH}/$(dirname "${RESULT_PATH}")"
             xmlstarlet tr "$XSL_FILE" -s "analyzer=${ANALYSIS_NAME}" < "${ANALYSIS_RESULTS_PATH}/${RESULT_PATH}" > "${TEST_RESULTS_PATH}/${RESULT_PATH}"
           done
       when: << parameters.when >>

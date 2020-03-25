@@ -48,7 +48,7 @@ steps:
                 PULL_REQUEST_PATH="${PULL_REQUEST#https://github.com/}"
                 URL="https://api.github.com/repos/${PULL_REQUEST_PATH/pull/pulls}"
                 COMMIT_RANGE=$(curl -SsfLH "Authorization: token ${<< parameters.vcs-api-token >>}" "${URL}" | jq -rM '"\(.base.sha)..\(.head.sha)"')
-                COMMITS["${PULL_REQUEST}"]="${COMMIT_RANGE}"
+                DSCAR_COMMIT_RANGES["${PULL_REQUEST}"]="${COMMIT_RANGE}"
               done
             else
               echo "sorry. Only GitHub is supported."
@@ -62,7 +62,7 @@ steps:
               ( set +e; grep -E '/compare/([0-9a-f]{7,40})[.]{2,}[0-9a-f]{7,40}$' ; : ) |
               sed -re 's/^.*\/compare\/([0-9a-f]{7,40}[.]{2,}[0-9a-f]{7,40})$/\1/'
             )
-            COMMITS[0]="${COMMIT_RANGE}"
+            DSCAR_COMMIT_RANGES[0]="${COMMIT_RANGE}"
           fi
 
           echo "$(declare -p DSCAR_COMMIT_RANGES)" >> $BASH_ENV

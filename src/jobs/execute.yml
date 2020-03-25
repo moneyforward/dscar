@@ -8,10 +8,6 @@ parameters:
     description: Amount of CPU and RAM allocated to each container in a job.
     type: string
     default: small
-  analysis-name:
-    description: Analysis name
-    type: string
-    default: "true"
   analyze:
     description: Specify analysis steps
     type: steps
@@ -22,10 +18,6 @@ parameters:
     type: steps
     default:
       - calculate
-  analysis-results-path:
-    description: Specify the path to save the analysis results if you need to change it
-    type: string
-    default: "/tmp/analysis-results"
   test-results-path:
     description: Specify the value of the path parameter in the store_test_results step if you need to change it
     type: string
@@ -43,9 +35,7 @@ resource_class: << parameters.resource_class >>
 parallelism: 1
 steps:
   - execute-and-evaluate:
-      analysis-name: << parameters.analysis-name >>
       analyze: << parameters.analyze >>
-      analysis-results-path: << parameters.analysis-results-path >>
       calculate: << parameters.calculate >>
       test-results-path: << parameters.test-results-path >>
       vcs-api-token: << parameters.vcs-api-token >>

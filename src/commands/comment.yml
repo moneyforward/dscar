@@ -161,6 +161,11 @@ steps:
                 } < "${ANALYSIS_RESULTS_PATH}/${RESULT_PATH}"
               done
 
+              COMMENT_FINGERPRINTS_PATH="/tmp/dscar/comment-fingerprints/.MESSAGES_THAT_COULD_NOT_BE_COMMENTED"
+              COMMENT_FINGERPRINTS="${COMMENT_FINGERPRINTS_PATH}/$(echo "${PULL_REQUEST}" | sha1sum | cut -c1-40)"
+              mkdir -p "$(dirname "${COMMENT_FINGERPRINTS}")"
+              touch "${COMMENT_FINGERPRINTS}"
+
               if [ $(jq -srM 'length' < "${MESSAGES_THAT_COULD_NOT_BE_COMMENTED}") -gt 0 ]
               then
                 REQUEST_BODY="$(mktemp)"

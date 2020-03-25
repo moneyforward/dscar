@@ -10,7 +10,7 @@ parameters:
 
 orbs:
   orb-tools: circleci/orb-tools@9.0.1
-  dscar: naokikimura/dscar@<< pipeline.parameters.dev-orb-version >>
+  dscar: moneyforward/dscar@<< pipeline.parameters.dev-orb-version >>
 
 anchors:
   dscar-default-executor: &dscar-default-executor
@@ -82,7 +82,7 @@ workflows:
           requires:
             - orb-tools/lint
       - orb-tools/publish-dev:
-          orb-name: naokikimura/dscar
+          orb-name: moneyforward/dscar
           requires:
             - orb-tools/pack
       - orb-tools/trigger-integration-tests-workflow:

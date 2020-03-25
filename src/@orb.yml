@@ -9,8 +9,8 @@ description: |
   difference between HEAD branch and its BASE branch.
 
 display:
-  home_url: https://github.com/naokikimura/dscar
-  source_url: https://github.com/naokikimura/dscar
+  home_url: https://corp.moneyforward.com/
+  source_url: https://github.com/moneyforward/dscar
 
 orbs:
   node: circleci/node@1.1.6

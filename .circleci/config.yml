@@ -7,6 +7,15 @@ parameters:
   dev-orb-version:
     type: string
     default: "dev:alpha"
+  project-git_url:
+    type: string
+    default: ""
+  git-base_revision:
+    type: string
+    default: ""
+  git-revision:
+    type: string
+    default: ""
 
 orbs:
   orb-tools: circleci/orb-tools@9.0.1
@@ -15,9 +24,9 @@ orbs:
 anchors:
   dscar-default-executor: &dscar-default-executor
     name: dscar/default
-    project-git_url: "" # << pipeline.project.git_url >>
-    git-base_revision: "" # << pipeline.git.base_revision >>
-    git-revision: "" # << pipeline.git.revision >>
+    project-git_url: << pipeline.parameters.project-git_url >>
+    git-base_revision: << pipeline.parameters.git-base_revision >>
+    git-revision: << pipeline.parameters.git-revision >>
 
 jobs:
   integration-test-1:
@@ -70,23 +79,35 @@ jobs:
           name: evaluate
           command: |
             set -x
-            test ${#FIRST_RESULT_PATH[@]} -eq 1 -a "${FIRST_RESULT_PATH}" = "${DSCAR_ANALYSIS_RESULTS_PATH}/true/${CIRCLE_NODE_INDEX}/89abcdef-analysis-result.xml"
-            test ${#SECOND_RESULT_PATH[@]} -eq 1 -a "${SECOND_RESULT_PATH}" = "${DSCAR_ANALYSIS_RESULTS_PATH}/true/${CIRCLE_NODE_INDEX}/01234567-analysis-result.xml"
-            test ${#DELTA_RESULT_PATH[@]} -eq 1 -a "${DELTA_RESULT_PATH}" = "${DSCAR_ANALYSIS_RESULTS_PATH}/true/${CIRCLE_NODE_INDEX}/9c17e047f58f9220a7008d4f18152fee4d111d14-DELTA-analysis-result.xml"
+            DIR="${DSCAR_ANALYSIS_RESULTS_PATH}/true/${CIRCLE_NODE_INDEX}"
+            test ${#FIRST_RESULT_PATH[@]} -eq 1 -a "${FIRST_RESULT_PATH}" = "${DIR}/89abcdef-analysis-result.xml"
+            test ${#SECOND_RESULT_PATH[@]} -eq 1 -a "${SECOND_RESULT_PATH}" = "${DIR}/01234567-analysis-result.xml"
+            test ${#DELTA_RESULT_PATH[@]} -eq 1 -a "${DELTA_RESULT_PATH}" = "${DIR}/9c17e047f58f9220a7008d4f18152fee4d111d14-DELTA-analysis-result.xml"
 
 workflows:
   lint_pack-validate_publish-dev:
     jobs:
       - orb-tools/lint
       - orb-tools/pack:
+          context: dscar
           requires:
             - orb-tools/lint
       - orb-tools/publish-dev:
+          context: dscar
           orb-name: moneyforward/dscar
           requires:
             - orb-tools/pack
       - orb-tools/trigger-integration-tests-workflow:
+          context: dscar
           name: trigger-integration-dev
+          pipeline-param-map: |
+            {
+              \"run-integration-tests\": true,
+              \"dev-orb-version\": \"dev:${CIRCLE_SHA1:0:7}\",
+              \"project-git_url\": \"<< pipeline.project.git_url >>\",
+              \"git-base_revision\": \"<< pipeline.git.base_revision >>\",
+              \"git-revision\": \"<< pipeline.git.revision >>\"
+            }
           requires:
             - orb-tools/publish-dev
     unless: << pipeline.parameters.run-integration-tests >>

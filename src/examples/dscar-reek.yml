@@ -2,7 +2,7 @@ description: Calculate Reek's analysis results for update difference between HEA
 usage:
   version: 2.1
   orbs:
-    dscar: naokikimura/dscar@0.8.5
+    dscar: naokikimura/dscar@x.y.z
   workflows:
     analyze-code-statically:
       jobs:
@@ -16,8 +16,8 @@ usage:
               docker-image: circleci/ruby
             pre-steps:
               - run: sudo gem install reek
-            analysis-name: Reek
             analyze:
               - dscar/analyze:
+                  analysis-name: Reek
                   analysis-command: reek
                   analysis-arguments: -f xml

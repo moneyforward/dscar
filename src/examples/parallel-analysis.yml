@@ -2,13 +2,12 @@ description: Execute HEAD and BASE analysis jobs in parallel and calculate the d
 usage:
   version: 2.1
   orbs:
-    dscar: naokikimura/dscar@0.8.5
+    dscar: naokikimura/dscar@x.y.z
   workflows:
     analyze-code-statically:
       jobs:
         - dscar/analyze: &analyze
             name: analyze head using eslint
-            analysis-name: ESLint
             executor:
               name: dscar/default
               project-git_url: << pipeline.project.git_url >>
@@ -17,19 +16,19 @@ usage:
               docker-image: circleci/node:10.16.0
             pre-steps:
               - run: npm install
-            analysis-results-path: /tmp/workspace/analysis-results
             test-results-path: ""
             analyze:
               - dscar/analyze:
                   prepare: []
                   starting-points: client/src
+                  analysis-name: ESLint
                   analysis-command: npx
                   analysis-arguments: eslint --ext .js,.jsx,.ts,.tsx -f checkstyle
             post-steps:
               - store_artifacts:
-                  path: /tmp/analysis-results
+                  path: /tmp/dscar/analysis-results
               - persist_to_workspace:
-                  root: /tmp/workspace
+                  root: /tmp/dscar
                   paths:
                     - analysis-results
             requires:
@@ -39,11 +38,14 @@ usage:
             name: analyze base using eslint
             is-target-branch-base: true
         - dscar/calculate:
-            analysis-name: ESLint
-            analysis-results-path: /tmp/workspace/analysis-results
+            executor:
+              name: dscar/default
+              project-git_url: << pipeline.project.git_url >>
+              git-base_revision: << pipeline.git.base_revision >>
+              git-revision: << pipeline.git.revision >>
             pre-steps:
               - attach_workspace:
-                  at: /tmp/workspace
+                  at: /tmp/dscar
             requires:
               - analyze head using eslint
               - analyze base using eslint

@@ -161,10 +161,22 @@ steps:
                 } < "${ANALYSIS_RESULTS_PATH}/${RESULT_PATH}"
               done
 
+              COMMENT_FINGERPRINTS_PATH="/tmp/dscar/comment-fingerprints/.MESSAGES_THAT_COULD_NOT_BE_COMMENTED"
+              COMMENT_FINGERPRINTS="${COMMENT_FINGERPRINTS_PATH}/$(echo "${PULL_REQUEST}" | sha1sum | cut -c1-40)"
+              mkdir -p "$(dirname "${COMMENT_FINGERPRINTS}")"
+              touch "${COMMENT_FINGERPRINTS}"
+
               if [ $(jq -srM 'length' < "${MESSAGES_THAT_COULD_NOT_BE_COMMENTED}") -gt 0 ]
               then
-                jq -srM "${FILTER}" < "${MESSAGES_THAT_COULD_NOT_BE_COMMENTED}" |
-                curl -SsfL "${REQUEST_HEADERS[@]}" --data-binary "@-" "${PR_COMMENT_URL}"
+                REQUEST_BODY="$(mktemp)"
+                jq -srM "${FILTER}" < "${MESSAGES_THAT_COULD_NOT_BE_COMMENTED}" > "${REQUEST_BODY}"
+                if ! { sha1sum -c "${COMMENT_FINGERPRINTS}" 2>/dev/null | grep -q 'OK$' ; } < "${REQUEST_BODY}"
+                then
+                  curl -SsfL "${REQUEST_HEADERS[@]}" --data-binary "@${REQUEST_BODY}" "${PR_COMMENT_URL}"
+                  sha1sum < "${REQUEST_BODY}" >> "${COMMENT_FINGERPRINTS}"
+                else
+                  echo 'This warning has been commented.' >&2
+                fi
               fi
             done
           else

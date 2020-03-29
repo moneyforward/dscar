@@ -43,30 +43,39 @@ steps:
           set -x
 
           function isarray {
-            declare -p | grep -qE "^declare -a\S* $1"
+            declare -p "$1" | grep -qE "^declare -a"
           }
 
-          if isarray FIRST_RESULT_PATH
-          then declare -n FIRST_PATHS=FIRST_RESULT_PATH
-          else declare FIRST_PATHS="${FIRST_RESULT_PATH:-${PARAM_FIRST_RESULT_PATH:-HEAD-analysis-result.xml}}"
-          fi
-          if isarray SECOND_RESULT_PATH
-          then declare -n SECOND_PATHS=SECOND_RESULT_PATH
-          else declare SECOND_PATHS="${SECOND_RESULT_PATH:-${PARAM_SECOND_RESULT_PATH:-BASE-analysis-result.xml}}"
-          fi
-          if isarray DELTA_RESULT_PATH
-          then declare -n DELTA_PATHS=DELTA_RESULT_PATH
-          else declare DELTA_PATHS="${DELTA_RESULT_PATH:-${PARAM_DELTA_RESULT_PATH:-/dev/null}}"
-          fi
+          declare -A MAP=( [FIRST]=HEAD [SECOND]=BASE [DELTA]=DELTA )
+          for KEY in ${!MAP[@]}
+          do
+            if isarray "${KEY}_RESULT_PATH"
+            then
+              declare -n "${KEY}_PATHS"="${KEY}_RESULT_PATH"
+            else
+              declare -n RESULT_PATH="${KEY}_RESULT_PATH"
+              declare -n PARAM_RESULT_PATH="PARAM_${KEY}_RESULT_PATH"
+              declare "${KEY}_PATHS"="${RESULT_PATH:-${PARAM_RESULT_PATH:-${MAP[$KEY]}-analysis-result.xml}}"
+            fi
+          done
 
           LAST=$(node -pe 'Math.max(...process.argv.slice(1).map(Number)) - 1' ${#FIRST_PATHS[*]} ${#SECOND_PATHS[*]} ${#DELTA_PATHS[*]})
           for INDEX in $(seq 0 $LAST)
           do
-            FIRST="${FIRST_PATHS[$INDEX]}"
-            SECOND="${SECOND_PATHS[$INDEX]}"
+            for KEY in FIRST SECOND
+            do
+              declare -n PATHS="${KEY}_PATHS"
+              FILE="${PATHS[$INDEX]}"
+              if [ -e "$FILE" ]
+              then
+                declare "$KEY"="$FILE"
+              else
+                TEMP=$(mktemp)
+                echo '<checkstyle/>' > "$TEMP"
+                declare "$KEY"="$TEMP"
+              fi
+            done
             DELTA="${DELTA_PATHS[$INDEX]}"
-
             mkdir -p $(dirname "${DELTA}")
-
             NODE_DEBUG="$COMMAND" "$COMMAND" $OPTIONS "${FIRST}" "${SECOND}" | tee "${DELTA}"
           done

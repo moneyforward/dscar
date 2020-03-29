@@ -48,5 +48,9 @@ integration-test-3: .circleci/compiled-config.yml
 integration-test-4: .circleci/compiled-config.yml
 	circleci local execute -c .circleci/compiled-config.yml --job integration-test-4
 
+.PHONY: integration-test-5
+integration-test-5: .circleci/compiled-config.yml
+	circleci local execute -c .circleci/compiled-config.yml --job integration-test-5
+
 .PHONY: integration-test
-integration-test: integration-test-1 integration-test-3 integration-test-4
+integration-test: integration-test-1 integration-test-3 integration-test-4 integration-test-5

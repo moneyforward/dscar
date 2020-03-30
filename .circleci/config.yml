@@ -35,6 +35,55 @@ jobs:
     steps:
       - checkout
       - dscar/analyze
+  integration-test-2:
+    executor:
+      <<: *dscar-default-executor
+    steps:
+      - run:
+          name: setup
+          command: |
+            declare -x CIRCLE_PULL_REQUEST=https://github.com/moneyforward/dscar/pull/6
+            declare -x CIRCLE_PULL_REQUESTS=$CIRCLE_PULL_REQUEST
+            declare -x CIRCLE_USERNAME=naokikimura
+            declare -x CIRCLE_SHA1=0a25943dce63cb2ac481dd8b672bfe53384f8086
+
+            ANALYSIS_NAME=CoffeeLint
+            BASE_SHA=5e563b0a2f9dd712a285a7835797afded818f79b
+            HEAD_SHA=$CIRCLE_SHA1
+            declare -Ax DSCAR_COMMIT_RANGES=(
+              ["${CIRCLE_PULL_REQUEST}"]="${BASE_SHA}..${HEAD_SHA}"
+            )
+
+            mkdir -p "${DSCAR_ANALYSIS_RESULTS_PATH}/${ANALYSIS_NAME}"
+            cat \<<-EOT > ${DSCAR_ANALYSIS_RESULTS_PATH}/${ANALYSIS_NAME}/${HEAD_SHA}-analysis-result.xml
+            <?xml version="1.0" encoding="UTF-8"?>
+            <checkstyle>
+              <file name="app/assets/javascripts/index.js.coffee">
+                <error source="no_unnecessary_double_quotes" message="Unnecessary double quotes are forbidden" severity="error" line="1" column="0"/>
+                <error source="no_unnecessary_double_quotes" message="Unnecessary double quotes are forbidden" severity="error" line="1" column="0"/>
+                <error source="no_unnecessary_double_quotes" message="Unnecessary double quotes are forbidden" severity="error" line="3" column="0"/>
+                <error source="no_unnecessary_double_quotes" message="Unnecessary double quotes are forbidden" severity="error" line="4" column="0"/>
+                <error source="no_unnecessary_double_quotes" message="Unnecessary double quotes are forbidden" severity="error" line="4" column="0"/>
+                <error source="no_unnecessary_double_quotes" message="Unnecessary double quotes are forbidden" severity="error" line="6" column="0"/>
+                <error source="no_unnecessary_double_quotes" message="Unnecessary double quotes are forbidden" severity="error" line="7" column="0"/>
+              </file>
+            </checkstyle>
+            EOT
+
+            cat \<<-EOT >> $BASH_ENV
+            $(declare -p CIRCLE_SHA1)
+            $(declare -p CIRCLE_USERNAME)
+            $(declare -p CIRCLE_PULL_REQUEST)
+            $(declare -p CIRCLE_PULL_REQUESTS)
+            $(declare -p DSCAR_COMMIT_RANGES)
+            EOT
+
+            COMMENT_FINGERPRINTS_PATH="/tmp/dscar/comment-fingerprints/.MESSAGES_THAT_COULD_NOT_BE_COMMENTED"
+            COMMENT_FINGERPRINTS="${COMMENT_FINGERPRINTS_PATH}/$(echo "${CIRCLE_PULL_REQUEST}" | sha1sum | cut -c1-40)"
+            mkdir -p "$(dirname "${COMMENT_FINGERPRINTS}")"
+            echo 'b84eeea8caeb3517e9474b7ae81646846a092ad2  -' > "${COMMENT_FINGERPRINTS}"
+      - dscar/comment:
+          when: on_success
   integration-test-3:
     executor:
       <<: *dscar-default-executor
@@ -147,6 +196,7 @@ workflows:
   integration-tests:
     jobs:
       - integration-test-1
+      - integration-test-2
       - integration-test-3
       - integration-test-4
       - integration-test-5

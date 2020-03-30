@@ -155,7 +155,7 @@ steps:
                         then
                           { jq -cM 'del(.commit_id)' | sha1sum ; } < "${REQUEST_BODY}" >> "${COMMENT_FINGERPRINTS}"
                         else
-                          cat < "${REQUEST_BODY}" >> "${MESSAGES_THAT_COULD_NOT_BE_COMMENTED}"
+                          jq -cM 'del(.commit_id)' < "${REQUEST_BODY}" >> "${MESSAGES_THAT_COULD_NOT_BE_COMMENTED}"
                         fi
                       else
                         echo 'This warning has been commented.' >&2

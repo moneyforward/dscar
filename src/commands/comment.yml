@@ -75,6 +75,10 @@ steps:
               echo "${RELATIVE_PATH#./}"
             }
 
+            function check_comment_fingerprints {
+              grep -q "$(jq -cM 'del(.commit_id)' | sha1sum)" <"$1"
+            }
+
             ANALYSIS_RESULTS_PATH="${ANALYSIS_RESULTS_PATH:-${DSCAR_ANALYSIS_RESULTS_PATH:-/tmp/dscar/analysis-results}}"
             REQUEST_HEADERS=(
               -H "Authorization: token ${<< parameters.vcs-api-token >>}"
@@ -145,13 +149,13 @@ steps:
                       set +e
                       REQUEST_BODY="$(mktemp)"
                       cat > "${REQUEST_BODY}"
-                      if ! { jq -cM 'del(.commit_id)' | sha1sum -c "${COMMENT_FINGERPRINTS}" 2>/dev/null | grep -q 'OK$' ; } < "${REQUEST_BODY}"
+                      if ! check_comment_fingerprints "${COMMENT_FINGERPRINTS}" < "${REQUEST_BODY}"
                       then
                         if curl -SsfL "${REQUEST_HEADERS[@]}" --data-binary "@${REQUEST_BODY}" "${COMMENT_URL}"
                         then
                           { jq -cM 'del(.commit_id)' | sha1sum ; } < "${REQUEST_BODY}" >> "${COMMENT_FINGERPRINTS}"
                         else
-                          cat < "${REQUEST_BODY}" >> "${MESSAGES_THAT_COULD_NOT_BE_COMMENTED}"
+                          jq -cM 'del(.commit_id)' < "${REQUEST_BODY}" >> "${MESSAGES_THAT_COULD_NOT_BE_COMMENTED}"
                         fi
                       else
                         echo 'This warning has been commented.' >&2
@@ -170,7 +174,7 @@ steps:
               then
                 REQUEST_BODY="$(mktemp)"
                 jq -srM "${FILTER}" < "${MESSAGES_THAT_COULD_NOT_BE_COMMENTED}" > "${REQUEST_BODY}"
-                if ! { sha1sum -c "${COMMENT_FINGERPRINTS}" 2>/dev/null | grep -q 'OK$' ; } < "${REQUEST_BODY}"
+                if ! check_comment_fingerprints "${COMMENT_FINGERPRINTS}" < "${REQUEST_BODY}"
                 then
                   curl -SsfL "${REQUEST_HEADERS[@]}" --data-binary "@${REQUEST_BODY}" "${PR_COMMENT_URL}"
                   sha1sum < "${REQUEST_BODY}" >> "${COMMENT_FINGERPRINTS}"

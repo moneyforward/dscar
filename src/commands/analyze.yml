@@ -112,7 +112,7 @@ steps:
         ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
         ERROR_PATTERN: << parameters.error-pattern >>
       command: |
-          set +e -x
+          set -x
 
           RESULTS_DIR="${ANALYSIS_RESULTS_PATH:-${DSCAR_ANALYSIS_RESULTS_PATH:-/tmp/dscar/analysis-results}}/${ANALYSIS_NAME:-true}/${CIRCLE_NODE_INDEX}"
           mkdir -p "${RESULTS_DIR}"

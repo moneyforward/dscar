@@ -10,6 +10,7 @@ parameters:
   git-base_revision:
     description: "Please set << pipeline.git-base_revision >>"
     type: string
+    default: '0000000000000000000000000000000000000000'
   git-revision:
     description: "Please set << pipeline.git-revision >>"
     type: string

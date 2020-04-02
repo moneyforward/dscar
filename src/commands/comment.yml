@@ -33,10 +33,8 @@ steps:
           <xsl:output method="html" omit-xml-declaration="yes" indent="no"/>
           <xsl:param name="analyzer" select="true" />
           <xsl:param name="path" select="''" />
-          <xsl:param name="username" select="''" />
           <xsl:template match="//error">
             <article>
-              @<xsl:value-of select="$username" />
               <p><b>[<xsl:value-of select="$analyzer" />]</b><xsl:text> </xsl:text><span><xsl:value-of select="@message" /></span></p>
               <details>
                 <p><xsl:value-of select="." /></p>
@@ -143,7 +141,7 @@ steps:
                     fi
 
                     echo "${COMMENT}" |
-                    xmlstarlet tr "$XSL" -s "analyzer=${ANALYSIS_NAME}" -s "path=${RELATIVE_PATH}" -s "username=${CIRCLE_USERNAME}" |
+                    xmlstarlet tr "$XSL" -s "analyzer=${ANALYSIS_NAME}" -s "path=${RELATIVE_PATH}" |
                     jq -scMR \
                       --arg 'commit_id' "${CIRCLE_SHA1}" \
                       --arg 'path' "${RELATIVE_PATH}" \

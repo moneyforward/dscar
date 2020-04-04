@@ -1,4 +1,4 @@
-description:
+description: Restore comment fingerprints from cache
 steps:
   - restore_cache:
       name: Restoring comment fingerprints cache

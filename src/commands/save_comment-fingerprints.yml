@@ -1,4 +1,4 @@
-description:
+description: Save comment fingerprints to cache
 parameters:
   when:
     description: "Specify when to enable or disable the step. Takes the following values: always, on_success, on_fail (default: on_fail)"

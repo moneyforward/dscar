@@ -1,4 +1,4 @@
-description:
+description: Refine analysis result
 parameters:
   analysis-results-path:
     description: "Specify the path to save the analysis results if you need to change it (default: /tmp/dscar/analysis-results)"

@@ -81,7 +81,7 @@ jobs:
             COMMENT_FINGERPRINTS_PATH="/tmp/dscar/comment-fingerprints/.MESSAGES_THAT_COULD_NOT_BE_COMMENTED"
             COMMENT_FINGERPRINTS="${COMMENT_FINGERPRINTS_PATH}/$(echo "${CIRCLE_PULL_REQUEST}" | sha1sum | cut -c1-40)"
             mkdir -p "$(dirname "${COMMENT_FINGERPRINTS}")"
-            echo 'b84eeea8caeb3517e9474b7ae81646846a092ad2  -' > "${COMMENT_FINGERPRINTS}"
+            echo '172a6b294407e6b80b2f6bb270e951c7c19960a9  -' > "${COMMENT_FINGERPRINTS}"
       - dscar/comment:
           when: on_success
   integration-test-3:

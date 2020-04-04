@@ -8,11 +8,6 @@ parameters:
     type: steps
     default:
       - analyze
-  calculate:
-    description: Specify the steps for calculating the difference
-    type: steps
-    default:
-      - calculate
   test-results-path:
     description: Specify the value of the path parameter in the store_test_results step if you need to change it
     type: string
@@ -31,10 +26,14 @@ steps:
   - declare-commit-ranges:
       circle_compare_url-path: << parameters.circle_compare_url-path >>
       vcs-api-token: << parameters.vcs-api-token >>
+  - run:
+      name: declare -x DSCAR_ANALYSIS_TARGET
+      command: |
+        set -x
+        declare -x DSCAR_ANALYSIS_TARGET=head
+        echo "$(declare -p DSCAR_ANALYSIS_TARGET)" >> $BASH_ENV
   - steps: << parameters.analyze >>
-  # steps to calculate the difference
-  - set-analysis-result-paths
-  - steps: << parameters.calculate >>
+  - refine-analysis-result
   - restore_comment-fingerprints
   - evaluate:
       pattern: &pattern '.*/([0-9]+-|)[0-9a-f]+-DELTA-analysis-result.xml$'

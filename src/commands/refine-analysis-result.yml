@@ -1,0 +1,87 @@
+description:
+parameters:
+  analysis-results-path:
+    description: "Specify the path to save the analysis results if you need to change it (default: /tmp/dscar/analysis-results)"
+    type: string
+    default: ""
+steps:
+  - run:
+      name: Refine analysis result
+      environment:
+        ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
+      command: |
+        set -x
+
+        ANALYSIS_RESULTS_PATH="${ANALYSIS_RESULTS_PATH:-${DSCAR_ANALYSIS_RESULTS_PATH:-/tmp/dscar/analysis-results}}"
+
+        sudo npm install --global xmldom
+
+        SCRIPT="$(mktemp)"
+        cat > "$SCRIPT" \<<-"EOT"
+        const fs = require('fs');
+        const path = require('path');
+        const util = require('util');
+        const xmldom = require('xmldom');
+
+        const parse = text => {
+          const [start, lines = 1] = text.split(',').map(Number).map(Math.abs);
+          return [start, start + lines - 1];
+        };
+
+        const hunks = JSON.parse(fs.readFileSync(process.argv[2]))
+          .map(([name, left, right]) => ({ name, left: parse(left), right: parse(right) }))
+          .reduce((hunks, hunk) => {
+            const ranges = hunks[hunk.name] || [];
+            hunks[hunk.name] = ranges.concat([hunk.right]);
+            return hunks;
+          }, {});
+
+        new Promise((resolve, reject) => {
+          const chunks = [];
+          process.stdin
+            .on('data', (chunk) => chunks.push(chunk))
+            .on('end', () => resolve(Buffer.concat(chunks)))
+            .on('error', reject);
+        }).then(buffer => {
+          const xml = new util.TextDecoder('UTF-8').decode(buffer);
+          return new xmldom.DOMParser().parseFromString(xml, 'application/xml');
+        }).then(document => {
+          Array.from(document.getElementsByTagName('file')).forEach(node => {
+            const name = node.getAttribute('name');
+            Array.from(node.getElementsByTagName('error')).forEach(node => {
+              const position = Number(node.getAttribute('line'));
+              const ranges = hunks[path.normalize(name)] || [];
+              for (const [start, end] of ranges) if (position >= start && position <= end) return;
+              node.parentNode.removeChild(node);
+            });
+          });
+          const xml = new xmldom.XMLSerializer().serializeToString(document);
+          console.log(xml);
+        }).catch(e => { console.error(e); process.exit(1); });
+        EOT
+
+        for KEY in "${!DSCAR_COMMIT_RANGES[@]}"
+        do
+          COMMIT_RANGE="${DSCAR_COMMIT_RANGES[$KEY]}"
+          COMMITS=( $(echo ${COMMIT_RANGE} | tr -s '.' '\t' ) )
+          BASE=${COMMITS[0]}
+          HEAD=${COMMITS[1]}
+          DELTA=$(echo -n "$KEY" | sha1sum | cut -d' ' -f1)
+          TRIPLE_DOT="${BASE}...${HEAD}"
+
+          HUNKS_METADATA="$(mktemp)"
+          git diff --name-only $TRIPLE_DOT |
+          while read -r NAME
+          do
+            git --no-pager diff -U0 $TRIPLE_DOT -- $NAME |
+            awk -v name="$NAME" 'BEGIN { OFS = "\t" } /^@@ / { print name, $2, $3; }'
+          done | jq -scMR 'split("\n") | map(select(. != "") | split("\t"))' > "$HUNKS_METADATA"
+
+          find "$ANALYSIS_RESULTS_PATH" -type f -regextype posix-extended -regex ".*/([0-9]+-|)${HEAD}-analysis-result.xml$" |
+          while read -r RESULT_PATH
+          do
+            REFINE_RESULT_PATH=$(echo "$RESULT_PATH" | sed -e "s/\b${HEAD}\b/${DELTA}-DELTA/")
+            NODE_PATH="$(npm -g prefix)/lib/node_modules" node "$SCRIPT" "$HUNKS_METADATA" < "$RESULT_PATH" |
+            tee /dev/stderr > "$REFINE_RESULT_PATH"
+          done
+        done

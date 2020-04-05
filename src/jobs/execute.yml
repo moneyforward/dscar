@@ -8,16 +8,15 @@ parameters:
     description: Amount of CPU and RAM allocated to each container in a job.
     type: string
     default: small
+  parallelism:
+    description: If parallelism is set to N > 1, then N independent executors will be set up and each will run the steps of that job in parallel.
+    type: integer
+    default: 1
   analyze:
     description: Specify analysis steps
     type: steps
     default:
       - analyze
-  calculate:
-    description: Specify the steps for calculating the difference
-    type: steps
-    default:
-      - calculate
   test-results-path:
     description: Specify the value of the path parameter in the store_test_results step if you need to change it
     type: string
@@ -32,11 +31,10 @@ parameters:
     default: ""
 executor: << parameters.executor >>
 resource_class: << parameters.resource_class >>
-parallelism: 1
+parallelism: << parameters.parallelism >>
 steps:
   - execute-and-evaluate:
       analyze: << parameters.analyze >>
-      calculate: << parameters.calculate >>
       test-results-path: << parameters.test-results-path >>
       vcs-api-token: << parameters.vcs-api-token >>
       circle_compare_url-path: << parameters.circle_compare_url-path >>

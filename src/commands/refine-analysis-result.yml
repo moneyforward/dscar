@@ -50,7 +50,7 @@ steps:
             const name = node.getAttribute('name');
             Array.from(node.getElementsByTagName('error')).forEach(node => {
               const position = Number(node.getAttribute('line'));
-              const ranges = hunks[path.normalize(name)] || [];
+              const ranges = hunks[path.relative(process.env.PWD, name)] || [];
               for (const [start, end] of ranges) if (position >= start && position <= end) return;
               node.parentNode.removeChild(node);
             });

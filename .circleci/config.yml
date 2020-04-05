@@ -165,6 +165,41 @@ jobs:
             test -e "DELTA-analysis-result.xml"
             sudo apt-get install xmlstarlet
             xmlstarlet sel -t -m '//error' -n >/dev/null < "DELTA-analysis-result.xml"
+  integration-test-6:
+    executor:
+      <<: *dscar-default-executor
+    steps:
+      - checkout
+      - run:
+          name: setup
+          command: |
+            git remote update
+            BASE=$(git rev-parse v1.0.0)
+            HEAD=$(git rev-parse v1.0.2)
+            RESULT_PATH="${DSCAR_ANALYSIS_RESULTS_PATH}/true/0/${HEAD}-analysis-result.xml"
+            mkdir -p "$(dirname "${RESULT_PATH}")"
+            cat \<<-EOT > "$RESULT_PATH"
+            <checkstyle>
+              <file name="${PWD}/src/commands/analyze.yml">
+                <error source="foo" message="hello" line="115" column="0" severity="error" />
+                <error source="bar" message="world" line="116" column="0" severity="error" />
+                <error source="baz" message="abcde" line="114" column="0" severity="error" />
+              </file>
+            </checkstyle>
+            EOT
+            declare -Ax DSCAR_COMMIT_RANGES=( [0]="${BASE}..${HEAD}" )
+            echo "$(declare -p DSCAR_COMMIT_RANGES)" >> $BASH_ENV
+      - dscar/refine-analysis-result
+      - run:
+          name: evaluate
+          command: |
+            set -x
+            DELTA=b6589fc6ab0dc82cf12099d1c2d40ab994e8410c
+            RESULT_PATH="${DSCAR_ANALYSIS_RESULTS_PATH}/true/0/${DELTA}-DELTA-analysis-result.xml"
+            test -e "$RESULT_PATH"
+            sudo apt-get install xmlstarlet
+            test $(xmlstarlet sel -t -m '//error' -n < "$RESULT_PATH" | wc -l) -eq 1
+            xmlstarlet sel -t -m "//file[@name='${PWD}/src/commands/analyze.yml']/error[@line='115']" -c '.' -n < "$RESULT_PATH"
 
 workflows:
   lint_pack-validate_publish-dev:
@@ -200,4 +235,5 @@ workflows:
       - integration-test-3
       - integration-test-4
       - integration-test-5
+      - integration-test-6
     when: << pipeline.parameters.run-integration-tests >>

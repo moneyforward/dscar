@@ -123,6 +123,12 @@ steps:
           then FIELDS=2
           fi
 
+          SPLIT_BY=name
+          if $SHOULD_FIND
+          then
+            SPLIT_BY=filesize
+          fi
+
           COMMITS=( $( for SHA1 in $( echo ${DSCAR_COMMIT_RANGES[@]} | tr ' ' '\n' | tr -s '.' '\t' | cut -f "${FIELDS:-1,2}" ) ; do echo $SHA1 ; done | sort | uniq ) )
 
           for SHA1 in ${COMMITS[@]:-${CIRCLE_SHA1}}
@@ -152,7 +158,7 @@ steps:
               fi
             } |
             {
-              circleci tests split --show-counts --split-by=filesize |
+              circleci tests split --show-counts --split-by=$SPLIT_BY |
               tr '\n' '\0' |
               xargs -0P << parameters.max-procs >> "${ANALYSIS_COMMAND:-true}" "${ANALYSIS_ARGUMENTS[@]}" ${PARAM_ANALYSIS_ARGUMENTS} 2>"${STDERR_TEMP}" |
               cat \

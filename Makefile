@@ -45,18 +45,6 @@ integration-test-1: .circleci/compiled-config.yml
 integration-test-2: .circleci/compiled-config.yml
 	circleci local execute -c $< --job $@ -e GITHUB_TOKEN=$(GITHUB_TOKEN)
 
-.PHONY: integration-test-3
-integration-test-3: .circleci/compiled-config.yml
-	circleci local execute -c $< --job $@
-
-.PHONY: integration-test-4
-integration-test-4: .circleci/compiled-config.yml
-	circleci local execute -c $< --job $@
-
-.PHONY: integration-test-5
-integration-test-5: .circleci/compiled-config.yml
-	circleci local execute -c $< --job $@
-
 .PHONY: integration-test-6
 integration-test-6: .circleci/compiled-config.yml
 	circleci local execute -c $< --job $@
@@ -65,7 +53,4 @@ integration-test-6: .circleci/compiled-config.yml
 integration-test: \
 	integration-test-1 \
 	integration-test-2 \
-	integration-test-3 \
-	integration-test-4 \
-	integration-test-5 \
 	integration-test-6

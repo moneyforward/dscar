@@ -12,10 +12,6 @@ parameters:
     description: If parallelism is set to N > 1, then N independent executors will be set up and each will run the steps of that job in parallel.
     type: integer
     default: 1
-  is-target-branch-base:
-    description: Check-out the BASE branch if true is specified
-    type: boolean
-    default: false
   analyze:
     description: Specify analysis steps
     type: steps
@@ -38,7 +34,6 @@ resource_class: << parameters.resource_class >>
 parallelism: << parameters.parallelism >>
 steps:
   - analyze-and-evaluate:
-      is-target-branch-base: << parameters.is-target-branch-base >>
       analyze: << parameters.analyze >>
       test-results-path: << parameters.test-results-path >>
       vcs-api-token: << parameters.vcs-api-token >>

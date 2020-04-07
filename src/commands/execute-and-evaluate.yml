@@ -26,12 +26,6 @@ steps:
   - declare-commit-ranges:
       circle_compare_url-path: << parameters.circle_compare_url-path >>
       vcs-api-token: << parameters.vcs-api-token >>
-  - run:
-      name: declare -x DSCAR_ANALYSIS_TARGET
-      command: |
-        set -x
-        declare -x DSCAR_ANALYSIS_TARGET=head
-        echo "$(declare -p DSCAR_ANALYSIS_TARGET)" >> $BASH_ENV
   - steps: << parameters.analyze >>
   - refine-analysis-result
   - restore_comment-fingerprints

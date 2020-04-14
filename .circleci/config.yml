@@ -119,6 +119,25 @@ jobs:
             sudo apt-get install xmlstarlet
             test $(xmlstarlet sel -t -m '//error' -n < "$RESULT_PATH" | wc -l) -eq 1
             xmlstarlet sel -t -m "//file[@name='${PWD}/src/commands/analyze.yml']/error[@line='115']" -c '.' -n < "$RESULT_PATH"
+  integration-test-7:
+    executor:
+      <<: *dscar-default-executor
+    steps:
+      - run:
+          name: setup
+          command: |
+            set -x
+            RESULT_PATH="${DSCAR_ANALYSIS_RESULTS_PATH}/true/0/${CIRCLE_SHA1}-analysis-result.xml"
+            mkdir -p "$(dirname "${RESULT_PATH}")"
+            cat \<<-EOT > "$RESULT_PATH"
+            <checkstyle>
+              <file name="${PWD}/src/commands/analyze.yml">
+                <error source="foo" message="hello" line="115" column="0" severity="error" />
+              </file>
+            </checkstyle>
+            EOT
+      - dscar/evaluate:
+          exit-status-if-detected: '0'
 
 workflows:
   lint_pack-validate_publish-dev:
@@ -152,4 +171,5 @@ workflows:
       - integration-test-1
       - integration-test-2
       - integration-test-6
+      - integration-test-7
     when: << pipeline.parameters.run-integration-tests >>

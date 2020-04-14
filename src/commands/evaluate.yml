@@ -8,21 +8,31 @@ parameters:
     description: Specify pattern to include by regular expression
     type: string
     default: ".*"
+  exit-status-if-detected:
+    description: Specify the exit status if the issue(s) is detected
+    type: enum
+    enum: ['0', '1']
+    default: '1'
 steps:
   - run:
       name: Evaluate analysis results
       environment:
         ANALYSIS_RESULTS_PATH: << parameters.analysis-results-path >>
         PATTERN: << parameters.pattern >>
+        EXIT_STATUS_IF_DETECTED: << parameters.exit-status-if-detected >>
         SELECTOR: //exception|//error
       command: |
-          set -x
-
-          sudo apt-get install xmlstarlet
+          sudo apt-get install -q xmlstarlet >/dev/null
 
           ANALYSIS_RESULTS_PATH="${ANALYSIS_RESULTS_PATH:-${DSCAR_ANALYSIS_RESULTS_PATH:-/tmp/dscar/analysis-results}}"
           find "${ANALYSIS_RESULTS_PATH}" -type f -regextype posix-extended -regex "$PATTERN" |
           while read -r RESULT_PATH
           do
-            ! xmlstarlet sel -t -m "$SELECTOR" -v '.' -n < "$RESULT_PATH" >/dev/null || exit $?
+            ! xmlstarlet sel -t -m "$SELECTOR" -v '.' -n < "$RESULT_PATH" >/dev/null ||
+            {
+              echo ''
+              echo '[INFO] The analyzer detected the issue(s) with the code changed by this pull request.'
+              echo '[INFO] Check the issue(s) detected by the analyzer in the test summary for this job and the review comments for this pull request.'
+              exit ${EXIT_STATUS_IF_DETECTED}
+            }
           done

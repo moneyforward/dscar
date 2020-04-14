@@ -138,6 +138,11 @@ jobs:
             EOT
       - dscar/evaluate:
           exit-status-if-detected: '0'
+  integration-test-8:
+    executor:
+      <<: *dscar-default-executor
+    steps:
+      - dscar/execute-and-evaluate
 
 workflows:
   lint_pack-validate_publish-dev:
@@ -172,4 +177,5 @@ workflows:
       - integration-test-2
       - integration-test-6
       - integration-test-7
+      - integration-test-8
     when: << pipeline.parameters.run-integration-tests >>

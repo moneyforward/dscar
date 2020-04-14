@@ -21,11 +21,21 @@ parameters:
     type: string
     default: ""
 steps:
-  - checkout-analysis-target:
-      is-target-branch-base: true
   - declare-commit-ranges:
       circle_compare_url-path: << parameters.circle_compare_url-path >>
       vcs-api-token: << parameters.vcs-api-token >>
+  - run:
+      name: Verify SHA1 of base branch
+      command: |
+        if [ ${#DSCAR_COMMIT_RANGES[@]} -eq 0 ] || echo ${DSCAR_COMMIT_RANGES[@]} | grep -qE '\b0{7,40}\b'
+        then
+          echo '[FATAL] Abort this job because the base branch is unknown.'
+          echo '[FATAL] This happens when you push a new branch.'
+          echo '[FATAL] Please re-run this job.'
+          exit 1
+        fi
+  - checkout-analysis-target:
+      is-target-branch-base: true
   - steps: << parameters.analyze >>
   - refine-analysis-result
   - restore_comment-fingerprints

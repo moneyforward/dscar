@@ -146,7 +146,13 @@ jobs:
     executor:
       <<: *dscar-default-executor
     steps:
-      - dscar/execute-and-evaluate
+      - dscar/execute-and-evaluate:
+          analyze:
+            - dscar/analyze:
+                header-command: echo
+                header-arguments: '<checkstyle>'
+                footer-command: echo
+                footer-arguments: '</checkstyle>'
 
 workflows:
   lint_pack-validate_publish-dev:

@@ -126,7 +126,11 @@ jobs:
       - run:
           name: setup
           command: |
-            set -x
+            declare -Ax DSCAR_COMMIT_RANGES=(
+              ['http://example.com/foo']="01234567..89abcdef"
+              ['http://example.com/bar']="01234567..89abcdef"
+            )
+            echo "$(declare -p DSCAR_COMMIT_RANGES)" >> $BASH_ENV
             RESULT_PATH="${DSCAR_ANALYSIS_RESULTS_PATH}/true/0/${CIRCLE_SHA1}-analysis-result.xml"
             mkdir -p "$(dirname "${RESULT_PATH}")"
             cat \<<-EOT > "$RESULT_PATH"

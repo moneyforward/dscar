@@ -31,8 +31,19 @@ steps:
             ! xmlstarlet sel -t -m "$SELECTOR" -v '.' -n < "$RESULT_PATH" >/dev/null ||
             {
               echo ''
-              echo '[INFO] The analyzer detected the issue(s) with the code changed by this pull request.'
-              echo '[INFO] Check the issue(s) detected by the analyzer in the test summary for this job and the review comments for this pull request.'
+              echo '[INFO] The analyzer detected the issue(s) with the code changed by the pull request associated with this build.'
+              echo '[INFO] Check the issue(s) detected by the analyzer in the test summary for this job and the review comments for the offending pull request.'
+              if [ ${#DSCAR_COMMIT_RANGES[@]} -gt 1 ]
+              then
+                echo "[WARN] There are ${#DSCAR_COMMIT_RANGES[@]} pull requests associated with this build."
+                for PR_URL in ${!DSCAR_COMMIT_RANGES[@]}
+                do
+                  echo "[WARN]  * ${PR_URL}"
+                done
+                echo '[WARN] Due to this effect, the check fails even for pull requests that have no problems.'
+                echo '[WARN] Note that re-running this job will not resolve this situation.'
+                echo '[WARN] To fix this situation, add a commit to the head branch because you need a fresh build.'
+              fi
               exit ${EXIT_STATUS_IF_DETECTED}
             }
           done
